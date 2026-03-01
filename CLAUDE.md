@@ -32,6 +32,17 @@ Do NOT skip steps. Do NOT start frontend before backend is verified.
 - Do NOT refactor, optimize, or restyle unrelated code
 - If `git diff` exceeds 50 lines → stop and reconsider the approach
 
+### §2.1 Minimum Viable Approach
+
+Always choose the simplest technology that meets the requirements:
+- Can solve with static HTML → do NOT use SPA framework
+- Can solve with SQLite/Turso → do NOT default to PostgreSQL
+- Can deploy on free tier (Vercel/Cloudflare) → do NOT require paid infrastructure
+- Can use a single file → do NOT create a multi-file module structure
+- Can use built-in browser APIs → do NOT add a library
+
+When multiple approaches exist, default to the one with **fewer dependencies, fewer moving parts, and lower cost**. Escalate complexity only when the simpler approach demonstrably cannot meet a specific requirement.
+
 ---
 
 ## §3 Post-Change Mandatory Checks (Four Checks)
@@ -378,6 +389,7 @@ When a prototype (static JSX/TSX pages + SPEC.md) is ready, the `/auto-dev` comm
 
 ---
 
-> **Version**: v5.0
+> **Version**: v5.1
+> **v5.0→v5.1 Changes**: Added §2.1 Minimum Viable Approach (simplest tech first).
 > **v4.1→v5.0 Changes**: Added §11 Branch & Deployment, §12 Environment Awareness, §13 Session Startup Protocol, §14 Session Management, §15 Snapshot Triggers, §16 Multi-Agent Collaboration, §17 Prototype-to-Dev Protocol. Updated §5.2 exit conditions (STATUS.md + PROJECT.md). Updated §10 DEV-LOG (added /status update step).
 > **Modification Permission**: Deny (AI must NOT modify this file)

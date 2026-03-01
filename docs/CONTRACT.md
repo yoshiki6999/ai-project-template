@@ -3,6 +3,28 @@
 > Any Agent calling another module MUST follow this contract.
 > Modifying this file = Prompt-level permission (requires human approval).
 
+## Contract Metadata
+
+| Field | Value |
+|-------|-------|
+| Version | 1.0.0 |
+| Last Modified | 2026-03-01 |
+| Modified By | — (template initial) |
+
+## Change Log
+
+| Version | Date | Agent | Change Description |
+|---------|------|-------|--------------------|
+| 1.0.0 | 2026-03-01 | — | Initial template |
+
+> **Version Rules**:
+> - Adding new interface → patch bump (1.0.x)
+> - Modifying existing interface → minor bump (1.x.0) + Prompt-level approval
+> - Removing interface or breaking change → major bump (x.0.0) + Prompt-level approval
+> - Every Agent MUST check Contract Version at session start. If version changed since last session, re-read full CONTRACT.
+
+---
+
 ## Contract Format
 
 ```
@@ -72,3 +94,5 @@ GET /api/voice-chat/sessions
 2. Modifying an existing interface signature → Prompt-level permission
 3. Removing an interface → Prompt-level permission
 4. All Agents must read this file at session start (CLAUDE.md §16)
+5. Every modification MUST update the Version, Last Modified, Modified By, and Change Log fields
+6. Agents must record Contract Version in their DEV-LOG

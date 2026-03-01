@@ -23,41 +23,56 @@
 
 ## SPEC.md Format
 
-Every new feature/module should have a SPEC.md:
+Every new feature/module should have a SPEC.md. Write it in **product manager language** — describe WHAT you want, not HOW to build it. The AI will derive technical details automatically.
+
+> For a comprehensive template with examples, see `presets/nextjs-prisma/SPEC-TEMPLATE.md`
 
 ```markdown
-# [Module Name] — Feature Specification
+# [Product/Feature Name] — What I Want to Build
 
-## Overview
-[What this feature does in 1-2 sentences]
+## What is this?
+[One sentence: what does this product/feature do?]
 
-## User Stories
-- As a [user type], I want to [action] so that [benefit]
+## Who uses it?
+[Target users — e.g., "Japanese office workers aged 25-40"]
 
-## Acceptance Criteria
-- [ ] [Specific, testable criterion]
-- [ ] [Another criterion]
+## How do they use it? (User Journey)
+1. User opens the page and sees...
+2. User clicks... and then...
+3. The result is...
 
-## UI Description
-[Describe the UI layout, key components, user interactions]
+## Reference Products
+- [URL] — I like their XX feature
+- [URL] — I like this UI style
 
-## API Requirements
-[List known API needs, or mark as "derive from UI"]
+## Must-Have Features (v1)
+- [ ] Feature 1
+- [ ] Feature 2
 
-## Database Requirements
-[List known schema needs, or mark as "derive from API"]
+## Nice-to-Have (later)
+- [ ] Feature A
 
-## Edge Cases
-- [What happens when X?]
-- [What if Y fails?]
+## Things I Do NOT Want
+- No XX
+- No YY
 
-## Security Considerations
-- [Auth requirements]
-- [Input validation needs]
+## Design Preferences
+- Style: [modern/minimal/cute/professional]
+- Mobile first: [yes/no]
 
-## Out of Scope
-- [What this feature does NOT include]
+## Data Validation Rules
+- [e.g., Post title: max 100 characters]
+
+## Additional Notes
+- [Anything else the AI should know]
 ```
+
+The AI agent will automatically derive from this SPEC:
+- Database schema (tables, columns, relations)
+- API endpoints (routes, input/output, auth)
+- UI components (pages, forms, interactions)
+- Edge cases and error handling
+- Security measures
 
 ## Cross-Module Changes
 

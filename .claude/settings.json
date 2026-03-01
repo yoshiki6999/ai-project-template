@@ -21,6 +21,16 @@
             "command": "bash .claude/hooks/block-dangerous-db.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-module-lock.sh",
+            "timeout": 10000
+          }
+        ]
       }
     ]
   }
