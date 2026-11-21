@@ -1,0 +1,18 @@
+{
+  "name": "roadbook",
+  "version": "0.1.0",
+  "private": true,
+  "description": "随行路书：AI 对话生成标准路书 + 动态地图随行原型",
+  "scripts": {
+    "start": "node server.mjs",
+    "build:sample": "node tools/build-sample.mjs",
+    "verify": "node tests/verify.mjs",
+    "e2e": "node tests/e2e.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.12.0"
+  }
+}
