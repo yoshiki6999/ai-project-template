@@ -35,7 +35,7 @@ test('GET /api/health returns deck + ai status', async () => {
   assert.equal(res.status, 200);
   assert.equal(j.ok, true);
   assert.equal(j.cards, 2);
-  assert.deepEqual(j.ai, { enabled: true, provider: 'mock' });
+  assert.deepEqual(j.ai, { enabled: true, provider: 'mock', requiresCode: true });
   assert.match(res.headers.get('content-security-policy'), /default-src 'self'/);
   assert.equal(res.headers.get('access-control-allow-origin'), null, 'no wildcard CORS');
 });

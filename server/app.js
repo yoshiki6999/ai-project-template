@@ -1,6 +1,7 @@
 // Request handler: API routes + static files. No framework (CLAUDE.md §2.1).
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { config } from '../config/index.js';
 import { getDeck } from './deck/index.js';
 import * as ai from './ai/index.js';
@@ -17,6 +18,8 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
 };
+
+let gz = null; // cached gzip of the deck JSON
 
 const AI_ROUTES = {
   '/api/ai/explain': ai.explain,
@@ -115,14 +118,21 @@ export async function handler(req, res) {
 
   if (pathname === '/api/health' && req.method === 'GET') {
     const deck = getDeck();
-    return send(res, 200, { ok: true, deckVersion: deck.version, cards: deck.cards.length, ai: ai.aiStatus() }, cors);
+    const st = ai.aiStatus();
+    const requiresCode = Boolean(config.security.accessCode) || st.provider === 'anthropic';
+    return send(res, 200, { ok: true, deckVersion: deck.version, cards: deck.cards.length, ai: { ...st, requiresCode } }, cors);
   }
 
   if ((pathname === '/api/deck' || pathname === '/data/deck.json') && (req.method === 'GET' || req.method === 'HEAD')) {
     const deck = getDeck();
     const etag = `"${deck.version}"`;
     if (req.headers['if-none-match'] === etag) return send(res, 304, '', { ETag: etag, ...cors });
-    return send(res, 200, deck.json, { 'Content-Type': MIME['.json'], ETag: etag, 'Cache-Control': 'no-cache', ...cors });
+    const headers = { 'Content-Type': MIME['.json'], ETag: etag, 'Cache-Control': 'no-cache', Vary: 'Accept-Encoding', ...cors };
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      gz = gz && gz.version === deck.version ? gz : { version: deck.version, buf: zlib.gzipSync(deck.json) };
+      return send(res, 200, gz.buf, { ...headers, 'Content-Encoding': 'gzip' });
+    }
+    return send(res, 200, deck.json, headers);
   }
 
   if (AI_ROUTES[pathname]) {

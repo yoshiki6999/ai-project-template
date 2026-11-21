@@ -21,7 +21,9 @@ export function readDeckFiles(paths = config.paths) {
     if (!Array.isArray(arr)) throw new Error(`${f} must contain a JSON array`);
     cards.push(...arr);
   }
-  cards.sort((a, b) => (order.get(a.scene) ?? 99) - (order.get(b.scene) ?? 99) || a.id.localeCompare(b.id));
+  // scene order, then vocab before grammar, then id
+  cards.sort((a, b) => (order.get(a.scene) ?? 99) - (order.get(b.scene) ?? 99) ||
+    (a.type === b.type ? 0 : a.type === 'vocab' ? -1 : 1) || a.id.localeCompare(b.id));
   return { version: deckVersion(scenes, cards), scenes, cards };
 }
 

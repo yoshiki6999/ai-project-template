@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#264d8c"/>
+  <rect x="120" y="150" width="250" height="300" rx="34" fill="#ffffff" opacity=".35" transform="rotate(-8 245 300)"/>
+  <rect x="150" y="110" width="250" height="300" rx="34" fill="#f7f5f0"/>
+  <circle cx="275" cy="200" r="34" fill="#e3552f"/>
+  <text x="275" y="345" font-family="Hiragino Sans, Noto Sans JP, sans-serif" font-size="120" font-weight="700" fill="#264d8c" text-anchor="middle">語</text>
+</svg>
