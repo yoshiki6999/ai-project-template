@@ -40,6 +40,8 @@ const r90 = core.replan(vA, core.toMin("13:30"), 90);
 ok("core: 晚 90 分 → 取消可选的灯台", r90.changes.some((c) => c.type === "drop") && r90.conflicts.length === 0);
 const r150 = core.replan(vA, core.toMin("13:30"), 150);
 ok("core: 晚 150 分 → 报告赶不上末班船", r150.conflicts.length === 1);
+const missed = core.replan(vA, core.toMin("12:55"), 40);
+ok("core: 人在码头但现在已过 13:00 → 报告已错过渡轮", missed.conflicts.length === 1 && missed.conflicts[0].message.includes("已经错过"));
 ok("core: 重排后固定班次时间不变", r90.variant.stops.find((s) => s.lastDeparture).depart === "16:30");
 const near = core.nearby(sample.pois, [34.2745, 135.0712], { cat: "wc" });
 ok("core: 加太港附近厕所按距离排序", near.length >= 1 && near[0].distM < 200);

@@ -288,7 +288,8 @@
     return st;
   }
 
-  /* ---------- 动态重排：晚点后自动压缩停留/取消可选点，守住固定班次 ---------- */
+  /* ---------- 动态重排：晚点后自动压缩停留/取消可选点，守住固定班次 ----------
+   * fromMinute = 用户此刻实际所处位置对应的「计划时间」，delay = 比计划晚了多少分钟（现在时刻 = fromMinute + delay）。 */
   function replan(vIn, fromMinute, delay) {
     var v = clone(vIn), stops = v.stops, changes = [], conflicts = [];
     var k = -1;
@@ -307,12 +308,13 @@
       for (var i = k; i < stops.length; i++) {
         if (dropped[i]) { times[i] = null; continue; }
         var s = stops[i], o = orig[i];
-        var a;
+        var a, atK = i === k && o.arrive != null && o.arrive <= fromMinute;
         if (i === k) a = (o.arrive != null ? o.arrive : o.depart) + delay;
         else a = t + legMin[i];
         if (s.fixed && o.depart != null) {
           var limit = o.depart - (i === stops.length - 1 ? 0 : BOARDING_BUFFER);
-          if (a > limit && !viol) viol = { i: i, over: a - limit, why: "fixed" };
+          if (atK) { if (fromMinute + delay > o.depart && !viol) viol = { i: i, over: fromMinute + delay - o.depart, why: "missed" }; }
+          else if (a > limit && !viol) viol = { i: i, over: a - limit, why: "fixed" };
           times[i] = { arrive: Math.min(a, o.depart), depart: o.depart };
           t = o.depart;
         } else {
@@ -326,7 +328,7 @@
       return { times: times, viol: viol };
     }
     var res = compute(), guard = 0;
-    while (res.viol && guard++ < 50) {
+    while (res.viol && res.viol.why !== "missed" && guard++ < 50) {
       var need = res.viol.over, j = res.viol.i;
       // 1) 从约束点往前压缩停留时间（不低于最短停留）
       for (var b = j - (res.viol.why === "last" ? 0 : 1); b >= k && need > 0; b--) {
@@ -347,7 +349,7 @@
     }
     if (res.viol) {
       var vs = stops[res.viol.i];
-      conflicts.push({ stopId: vs.id, over: res.viol.over, message: res.viol.why === "fixed" ? "按现在的进度会错过「" + vs.name + "」" + vs.depart + " 的固定班次（差 " + res.viol.over + " 分钟），建议改走备选方案或打车" : "「" + vs.name + "」会晚于末班 " + vs.lastDeparture + "（差 " + res.viol.over + " 分钟）" });
+      conflicts.push({ stopId: vs.id, over: res.viol.over, message: res.viol.why === "missed" ? "已经错过「" + vs.name + "」" + vs.depart + " 的固定班次（晚了 " + res.viol.over + " 分钟），后面的行程需要改走备选方案或等下一班" : res.viol.why === "fixed" ? "按现在的进度会错过「" + vs.name + "」" + vs.depart + " 的固定班次（差 " + res.viol.over + " 分钟），建议改走备选方案或打车" : "「" + vs.name + "」会晚于末班 " + vs.lastDeparture + "（差 " + res.viol.over + " 分钟）" });
     }
     var kept = [];
     stops.forEach(function (s, i) {
