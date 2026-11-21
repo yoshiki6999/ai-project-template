@@ -242,7 +242,7 @@
         try { const sp = await window.claude.use("sample"); if (sp) S.ai = { kind: "claude", label: "Claude", sample: sp }; } catch {}
         try { S.dictation = await window.claude.use("dictation"); } catch { S.dictation = null; }
       }
-      if (S.ai.kind === "demo") {
+      if (S.ai.kind === "demo" && !window.claude) { // 在 Claude 页面里不探测自建服务器
         try {
           const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500);
           const r = await fetch("api/health", { signal: ctl.signal }); clearTimeout(t);
