@@ -7,15 +7,16 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
-| Last Modified | 2026-03-01 |
-| Modified By | — (template initial) |
+| Version | 1.0.1 |
+| Last Modified | 2026-11-21 |
+| Modified By | Claude Code (claude/japanese-flashcard-app-laqocg) |
 
 ## Change Log
 
 | Version | Date | Agent | Change Description |
 |---------|------|-------|--------------------|
 | 1.0.0 | 2026-03-01 | — | Initial template |
+| 1.0.1 | 2026-11-21 | Claude Code | Added deck + ai module contracts (N3 flashcard app) |
 
 > **Version Rules**:
 > - Adding new interface → patch bump (1.0.x)
@@ -87,6 +88,61 @@ GET /api/voice-chat/sessions
 - auth (requires login session)
 - storage (file upload for audio)
 -->
+
+## deck
+
+### External Interfaces
+GET /api/health
+  Input: none
+  Output: { ok: true, deckVersion: string, cards: number, ai: { enabled: boolean, provider: "anthropic"|"mock"|"off", requiresCode: boolean } }
+  Auth: none (read-only)
+  Errors: 500 internal
+
+GET /api/deck  (alias: GET /data/deck.json)
+  Input: optional header If-None-Match
+  Output: { version: string, scenes: Scene[], cards: Card[] }  (ETag, gzip when accepted; 304 on match)
+  Auth: none (public course content)
+  Errors: 500 deck invalid (server refuses to start)
+
+Card: { id: "v001"|"g001", type: "vocab"|"grammar", scene, level: "N5"-"N2", word, reading, pos, meaning,
+        form?(grammar), emoji, example (ruby markup {漢字|かな}), exampleZh, target, example2?, example2Zh?,
+        note, collocations?: string[], confusable?, trap?, memory? }
+Scene: { id, name, nameJa, emoji, desc, roleplay: { role, roleZh, setting, opening (ruby), goals: string[] } }
+
+Node API (server/deck/index.js): getDeck(), getCard(id), getScene(id), validateCard(), validateDeck(), toPlain(), toKana()
+
+### Dependencies
+- None (reads data/ via config)
+
+---
+
+## ai
+
+### External Interfaces
+All: POST, Content-Type: application/json, body ≤ 16KB, header X-Access-Code (required when APP_ACCESS_CODE is set or provider is anthropic), rate limit RATE_LIMIT_PER_MIN per IP.
+Error body: { error: code, message: 中文用户提示 }  — codes: bad_request 400, unauthorized 401, not_found 404, method_not_allowed 405, too_large 413, unsupported 415 (as bad_request), ai_refused 422, rate_limited 429, ai_failed 502, ai_disabled/ai_locked 503, ai_timeout 504
+
+POST /api/ai/explain
+  Input: { cardId: string, question?: string(≤200) }
+  Output: { answer, examples: {ja, zh}[3], nuance, kanji, related: string[≤5], cached?: true }
+
+POST /api/ai/check
+  Input: { cardId: string, text: string(1–300) }
+  Output: { score: 0–100, verdict: "natural"|"understandable"|"incorrect", usedTarget: boolean, corrected, feedback, alternatives: {ja, zh}[≤2] }
+
+POST /api/ai/roleplay
+  Input: { sceneId: string, history: {role:"user"|"ai", text}[] (alternating, starts with user, even length, ≤16), userText: string(1–300) }
+  Output: { reply (ruby), replyZh, feedback, correction (ruby or ""), suggestions: {ja, zh}[≤3], goalsDone: int[], finished: boolean }
+
+POST /api/ai/story
+  Input: { cardIds: string[1–8] }
+  Output: { title, lines: {ja, zh}[], question: { q, options: string[4], answer: int, explain } }
+
+### Dependencies
+- deck (getCard, getScene, getDeck) — card/scene lookup and scene vocabulary for role-play prompts
+- Claude API via @anthropic-ai/sdk (model from AI_MODEL, default claude-opus-5-5)
+
+---
 
 ## Contract Change Rules
 

@@ -26,6 +26,8 @@ export function chooseMode(card, st, { silent }) {
   else if (s < 7) pool = ['cloze', 'cloze', 'listen', 'meaning'];
   else if (s < 21) pool = ['recall', 'cloze', 'recall'];
   else pool = ['sentence', 'recall', 'cloze'];
+  // Hearing a bare grammar pattern ("〜ばかり") teaches little — use the sentence context instead.
+  if (card.type === 'grammar') pool = pool.map((m) => (m === 'listen' ? 'cloze' : m));
   if (silent) pool = pool.map((m) => (m === 'listen' ? 'meaning' : m === 'sentence' ? 'cloze' : m));
   return pool[Math.floor(Math.random() * pool.length)];
 }

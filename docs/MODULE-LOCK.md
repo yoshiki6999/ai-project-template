@@ -12,7 +12,10 @@
 
 | Module | Agent | Exclusive Files |
 |--------|-------|----------------|
-| <!-- [module] --> | <!-- [CC Session 1 / Codex / etc.] --> | <!-- [file paths] --> |
+| deck | CC claude/japanese-flashcard-app-laqocg | server/deck/**, data/**, scripts/validate-deck.mjs |
+| ai | CC claude/japanese-flashcard-app-laqocg | server/ai/** |
+| http | CC claude/japanese-flashcard-app-laqocg | server/app.js, server/security.js, server/index.js, config/index.js |
+| web | CC claude/japanese-flashcard-app-laqocg | public/**, e2e/** |
 
 ## Shared Files (Append Only)
 

@@ -19,6 +19,12 @@ server.headersTimeout = 30_000;
 server.listen(config.port, () => {
   const s = aiStatus();
   console.log(`[nihongo-cards] listening on port ${config.port} · cards=${deck.cards.length} · deck=${deck.version} · ai=${s.provider}`);
+  if (s.provider === 'anthropic' && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_PROFILE) {
+    console.warn('[nihongo-cards] WARNING: AI_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set — AI requests will fail.');
+  }
+  if (s.provider === 'anthropic' && !config.security.accessCode) {
+    console.warn('[nihongo-cards] WARNING: APP_ACCESS_CODE is not set — AI endpoints stay locked until it is configured.');
+  }
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
