@@ -39,12 +39,15 @@
 ## Module Inventory
 | Module | Function | Core Files | Status |
 |--------|----------|-----------|--------|
-| <!-- [module-name] --> | <!-- [description] --> | <!-- [key file paths] --> | <!-- completed / in-dev / planned --> |
+| roadbook | 随行路书：AI 对话生成标准路书、地图随行、晚点重排、足迹 | apps/roadbook/public/core.js, public/app.js, server.mjs, lib/ai.mjs | in-dev（原型 v0.1） |
 
 ## API Endpoint Overview
 | Method | Path | Function | Auth |
 |--------|------|----------|------|
-| <!-- [GET/POST] --> | <!-- [/api/xxx] --> | <!-- [description] --> | <!-- [yes/no] --> |
+| GET | /api/health | 服务状态（是否配置 AI、访问码） | no（无数据） |
+| POST | /api/roadbook/validate | 校验 roadbook/v1 路书 | yes（x-roadbook-key） |
+| POST | /api/roadbook/replan | 晚点后重排某天方案 | yes |
+| POST | /api/roadbook/chat | AI 对话规划（Claude） | yes + 限流 |
 
 ## Database Overview
 - Total tables: <!-- N -->
