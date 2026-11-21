@@ -1,6 +1,6 @@
 import struct, json, sys, math
 D = sys.argv[1]; OUT = sys.argv[2]
-W, E, S, N = 134.70, 135.85, 33.95, 34.92
+W, E, S, N = 134.25, 136.45, 33.40, 35.80  # 关西全域：姬路—京都—琵琶湖—奈良—和歌山—纪伊半岛西岸
 def read(meta, dat, want_types=None):
     polys = []
     with open(f"{D}/{meta}") as m, open(f"{D}/{dat}", "rb") as f:
@@ -49,7 +49,9 @@ def rdp(pts, eps):
     return [p for p, k in zip(pts, keep) if k]
 def eps_for(pts):  # finer detail near Kada / Tomogashima / Wakayama
     cx = sum(p[0] for p in pts) / len(pts); cy = sum(p[1] for p in pts) / len(pts)
-    return 0.00025 if (134.95 < cx < 135.25 and 34.15 < cy < 34.32) else 0.0006
+    if 134.95 < cx < 135.25 and 34.15 < cy < 34.32: return 0.00025  # 加太/友岛/和歌山细节
+    if 135.0 < cx < 135.9 and 34.3 < cy < 35.1: return 0.0006   # 大阪湾、京阪神
+    return 0.0012
 land, lakes, rivers = [], [], []
 for typ, pts in read('gshhsmeta_f.dat', 'gshhs_f.dat'):
     c = clip(pts)

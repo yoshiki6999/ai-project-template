@@ -61,19 +61,20 @@
     const PLACES = [
       { n: "大阪湾", lat: 34.50, lng: 135.22, sea: 1, min: 0 }, { n: "纪淡海峡", lat: 34.235, lng: 135.01, sea: 1, min: 0.006 }, { n: "纪伊水道", lat: 34.06, lng: 134.98, sea: 1, min: 0.002 },
       { n: "淡路岛", lat: 34.40, lng: 134.84, min: 0 }, { n: "大阪", lat: 34.69, lng: 135.50, min: 0 }, { n: "堺", lat: 34.57, lng: 135.49, min: 0.003 }, { n: "岸和田", lat: 34.455, lng: 135.40, min: 0.004 },
-      { n: "和歌山", lat: 34.215, lng: 135.205, min: 0 }, { n: "枚方", lat: 34.835, lng: 135.68, min: 0.002 }, { n: "加太", lat: 34.264, lng: 135.092, min: 0.012 }, { n: "友岛", lat: 34.296, lng: 135.005, min: 0.01 }, { n: "和歌浦", lat: 34.176, lng: 135.168, min: 0.012 }
+      { n: "和歌山", lat: 34.215, lng: 135.205, min: 0 }, { n: "京都", lat: 35.02, lng: 135.76, min: 0 }, { n: "神户", lat: 34.70, lng: 135.19, min: 0 }, { n: "奈良", lat: 34.685, lng: 135.83, min: 0 },
+      { n: "琵琶湖", lat: 35.25, lng: 136.08, sea: 1, min: 0 }, { n: "姬路", lat: 34.83, lng: 134.69, min: 0.002 }, { n: "大津", lat: 35.0, lng: 135.87, min: 0.006 }, { n: "宇治", lat: 34.89, lng: 135.80, min: 0.008 }, { n: "枚方", lat: 34.835, lng: 135.68, min: 0.002 }, { n: "加太", lat: 34.264, lng: 135.092, min: 0.012 }, { n: "友岛", lat: 34.296, lng: 135.005, min: 0.01 }, { n: "和歌浦", lat: 34.176, lng: 135.168, min: 0.012 }
     ];
     function ringPath(r) { let d = ""; r.forEach((p, i) => { const [x, y] = proj(p[1], p[0]); d += (i ? "L" : "M") + Math.round(x) + " " + Math.round(y); }); return d + "Z"; }
     function linePath(pts) { return pts.map((p, i) => { const [x, y] = proj(p[0], p[1]); return (i ? "L" : "M") + Math.round(x) + " " + Math.round(y); }).join(""); }
     function setBase(coast) {
       const g = $("#gLand");
-      g.innerHTML = '<path class="land" d="' + coast.land.map(ringPath).join("") + '"/>' + coast.rivers.map((r) => '<path class="river" d="' + linePath(r.map((p) => [p[1], p[0]])) + '"/>').join("");
+      g.innerHTML = '<path class="land" d="' + coast.land.map(ringPath).join("") + '"/>' + '<path class="lake" d="' + (coast.water || []).map(ringPath).join("") + '"/>' + coast.rivers.map((r) => '<path class="river" d="' + linePath(r.map((p) => [p[1], p[0]])) + '"/>').join("");
     }
     function resize() { W = mapEl.clientWidth || 1; H = mapEl.clientHeight || 1; apply(); }
     function apply() { svg.setAttribute("viewBox", (cx - W / 2 / scale) + " " + (cy - H / 2 / scale) + " " + (W / scale) + " " + (H / scale)); layout(); }
     function toScreen(lat, lng) { const [x, y] = proj(lat, lng); return [(x - cx) * scale + W / 2, (y - cy) * scale + H / 2]; }
     function pads() {
-      const top = ($(".topbar").getBoundingClientRect().bottom || 100) + (S.mode === "live" && !$("#island").hidden ? 76 : 8);
+      const top = ($(".topbar").getBoundingClientRect().bottom || 100) + (S.mode === "live" && !$("#island").hidden ? 96 : 34);
       return innerWidth >= 760 ? { top, bottom: 24, left: 460, right: 60 } : { top, bottom: Sheet.visible() + 12, left: 24, right: 60 };
     }
     function stop() { if (anim) cancelAnimationFrame(anim); anim = null; }
@@ -245,7 +246,7 @@
         try {
           const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500);
           const r = await fetch("api/health", { signal: ctl.signal }); clearTimeout(t);
-          if (r.ok) { const j = await r.json(); S.ai.serverReady = !!(j.ai && j.auth); if (S.ai.serverReady && store.get("key")) S.ai = { kind: "server", label: "Claude·服务器", serverReady: true }; }
+          if (r.ok) { const j = await r.json(); S.ai.serverReady = !!(j.ai && j.auth); if (S.ai.serverReady && store.get("key")) S.ai = { kind: "server", label: typeof j.label === "string" && j.label ? j.label.slice(0, 20) : "Claude·服务器", serverReady: true }; }
         } catch {}
       }
       renderAIChip();
