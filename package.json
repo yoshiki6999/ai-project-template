@@ -1,0 +1,22 @@
+{
+  "name": "nihongo-life-cards",
+  "version": "0.1.0",
+  "private": true,
+  "description": "N3 life-Japanese flashcards (583 cards) — mobile PWA with FSRS and Claude-powered practice",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "check": "node scripts/check.mjs",
+    "validate": "node scripts/validate-deck.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"tests/*.test.js\"",
+    "e2e": "node e2e/run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.12.0"
+  }
+}
