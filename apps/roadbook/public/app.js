@@ -40,15 +40,16 @@
     rb: null, sample: null, coast: null, mode: "chat", dayVar: "d1a", turns: [], busy: false, abort: null,
     sim: { minute: 10 * 60 + 5, playing: false, speed: 60, lag: 0, realGPS: false, gpsPos: null, autoCheck: true, tts: false },
     checkins: {}, track: [], lastAt: null, arrived: null, follow: true, selStop: null, poiHL: null, nearCat: null,
-    ai: { kind: "demo", label: "演示 AI" }, dictation: null, listening: false
+    ai: { kind: "demo", label: "演示 AI" }, dictation: null, listening: false, history: [], pending: null
   };
-  const variantById = (id, rb = S.rb) => { for (const d of (rb && rb.days) || []) for (const v of d.variants) if (v.id === id) return { day: d, v }; return null; };
-  const cur = () => variantById(S.dayVar) || (S.rb && S.rb.days[0] && { day: S.rb.days[0], v: S.rb.days[0].variants[0] });
+  function viewRb() { return S.pending ? S.pending.rb : S.rb; }
+  const variantById = (id, rb = viewRb()) => { for (const d of (rb && rb.days) || []) for (const v of d.variants) if (v.id === id) return { day: d, v }; return null; };
+  const cur = () => { const rb = viewRb(); return variantById(S.dayVar) || (rb && rb.days[0] && { day: rb.days[0], v: rb.days[0].variants[0] }); };
   const ckey = (v, s) => v.id + "/" + s.id;
   let saveTimer = null;
   function save() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => store.set("state", { rb: S.rb, turns: S.turns.slice(-40), dayVar: S.dayVar, checkins: S.checkins, track: S.track.slice(-2000), minute: S.sim.minute, v: 1 }), 400);
+    saveTimer = setTimeout(() => store.set("state", { rb: S.rb, turns: S.turns.slice(-40), dayVar: S.dayVar, checkins: S.checkins, track: S.track.slice(-2000), minute: S.sim.minute, history: S.history.slice(-15), pending: S.pending, v: 1 }), 400);
   }
 
   /* ---------------- 地图引擎（自绘矢量底图，生产版换 MapKit） ---------------- */
@@ -132,11 +133,12 @@
 
     // 路线与图层
     let pins = [], me = null, pois = [], heading = null;
-    function setRoute(v, live) {
+    function setRoute(v, live, ghost) {
       const g = $("#gRoute"); let out = "";
+      if (ghost) C.timeline(ghost).filter((t) => t.type === "leg").forEach((t) => { out += '<path class="leg ghost" d="' + linePath(t.path) + '"/>'; });
       const stops = v ? v.stops : [];
       const rails = new Set();
-      (S.rb ? S.rb.days : []).forEach((d) => d.variants.forEach((x) => x.stops.forEach((s, i) => { if (i && s.legIn && s.legIn.mode === "rail") rails.add(linePath(C.timeline({ stops: [x.stops[i - 1], s] }).find((t) => t.type === "leg")?.path || [])); })));
+      (viewRb() ? viewRb().days : []).forEach((d) => d.variants.forEach((x) => x.stops.forEach((s, i) => { if (i && s.legIn && s.legIn.mode === "rail") rails.add(linePath(C.timeline({ stops: [x.stops[i - 1], s] }).find((t) => t.type === "leg")?.path || [])); })));
       $("#gRail").innerHTML = [...rails].filter(Boolean).map((d) => '<path class="railbase" d="' + d + '"/>').join("");
       const tl = v ? C.timeline(v) : [];
       tl.filter((t) => t.type === "leg").forEach((t) => {
@@ -312,13 +314,26 @@
   }
   function applyAI(res) {
     const meta = { proposals: res.proposals || [], quick: res.quickReplies || [], who: S.ai.label };
-    if (res.roadbook) {
-      const merged = C.mergeAIRoadbook(S.rb || S.sample, res.roadbook);
-      meta.diffs = S.rb ? C.diff(S.rb, merged) : [{ type: "add", text: "生成路书 · " + merged.days.length + " 天" }];
-      const v = C.validate(merged); meta.issues = { errors: v.issues.filter((i) => i.level === "error").length, warns: v.issues.filter((i) => i.level !== "error").length };
-      meta.rb = true;
-      S.rb = merged;
-      if (!variantById(S.dayVar)) S.dayVar = S.rb.days[0] && S.rb.days[0].variants[0] ? S.rb.days[0].variants[0].id : null;
+    let next = null, opErrors = [];
+    if (res.ops && res.ops.length && S.rb) { const r = C.applyOps(S.rb, res.ops); next = r.rb; opErrors = r.errors; }
+    else if (res.roadbook) next = C.mergeAIRoadbook(S.rb || S.sample, res.roadbook);
+    if (opErrors.length) meta.opErrors = opErrors;
+    if (next) {
+      const v = C.validate(next);
+      meta.issues = { errors: v.issues.filter((i) => i.level === "error").length, warns: v.issues.filter((i) => i.level !== "error").length };
+      if (!S.rb) { // 第一次生成：直接成为 v1
+        next.version = 1; S.rb = next; S.history = []; meta.rb = true;
+        meta.diffs = [{ type: "add", text: "生成路书 · " + next.days.length + " 天" }];
+        S.dayVar = next.days[0] && next.days[0].variants[0] ? next.days[0].variants[0].id : null;
+      } else { // 之后每次修改：先预览，确认后才成为新版本
+        next.version = (S.rb.version || 1) + 1;
+        const cs = C.changeSet(S.rb, next);
+        const lastUser = [...S.turns].reverse().find((t) => t.role === "user");
+        S.pending = { rb: next, cs, at: Date.now(), instruction: lastUser ? lastUser.content : "", opErrors };
+        meta.pendingAt = S.pending.at;
+        if (cs.variants[0] && variantById(cs.variants[0].id, next)) S.dayVar = cs.variants[0].id;
+      }
+      if (!variantById(S.dayVar)) S.dayVar = viewRb().days[0].variants[0].id;
       refreshAll(true);
     }
     S.turns.push({ role: "assistant", content: res.reply || "（没有回复）", meta });
@@ -339,6 +354,8 @@
         p.risk ? h("div", { class: "risk", text: "⚠︎ " + p.risk }) : null,
         idx === S.turns.length - 1 ? h("button", { class: "btn small primary", type: "button", disabled: S.busy || null, onclick: () => send("选" + p.title.replace(/\s/g, "")) }, "选这个") : null))));
       if (m.diffs && m.diffs.length) list.append(h("div", { class: "diffs" }, m.diffs.slice(0, 8).map((d) => h("span", { class: d.type, text: d.text })), m.diffs.length > 8 ? h("span", { text: "…共 " + m.diffs.length + " 处" }) : null));
+      if (m.pendingAt) list.append(previewCard(m));
+      if (m.opErrors && m.opErrors.length) list.append(h("div", { class: "issues" }, m.opErrors.map((x) => h("div", { class: "issue error" }, h("b", { text: "没执行" }), h("span", { text: x })))));
       if (m.rb) list.append(h("div", { class: "row" },
         h("button", { class: "btn small", type: "button", onclick: () => setMode("book") }, "查看路书"),
         m.issues ? h("span", { class: "chip " + (m.issues.errors ? "err" : m.issues.warns ? "warn" : ""), text: m.issues.errors ? "校验：" + m.issues.errors + " 个问题" : m.issues.warns ? "校验通过 · " + m.issues.warns + " 个提醒" : "校验通过" }) : null));
@@ -349,6 +366,50 @@
     ((lastAI && lastAI.meta && lastAI.meta.quick) || (S.turns.length ? [] : ["周六去和歌山看演唱会，顺便上友岛", "帮我把攻略整理成路书"])).forEach((x) => q.append(h("button", { type: "button", disabled: S.busy || null, onclick: () => send(x) }, x)));
     q.hidden = !q.children.length;
     const sc = $("#chatScroll"); requestAnimationFrame(() => { sc.scrollTop = sc.scrollHeight; });
+  }
+  /* ---------- 修改预览 / 版本 ---------- */
+  function previewCard(m) {
+    const live = S.pending && S.pending.at === m.pendingAt;
+    if (!live) return h("div", { class: "row" }, h("span", { class: "chip " + (m.resolved === "accepted" ? "" : "grey"), text: m.resolved === "accepted" ? "✓ 已采用为 v" + (m.version || "") : m.resolved === "discarded" ? "已放弃这次修改" : "这次修改已被新的修改取代" }));
+    const p = S.pending, cs = p.cs;
+    const box = h("div", { class: "preview" }, h("div", { class: "ph" }, h("b", { text: "修改预览" }), h("span", { class: "chip warn", text: "v" + (S.rb.version || 1) + " → v" + p.rb.version })));
+    cs.variants.forEach((g) => { box.append(h("div", { class: "pg", text: g.name })); g.items.forEach((it) => box.append(h("div", { class: "pi " + it.type, text: it.text }))); });
+    if (!cs.count) box.append(h("div", { class: "pi", text: "没有实际变化" }));
+    const fare = cs.fareDelta ? (cs.fareDelta > 0 ? "多花 ¥" + cs.fareDelta.toLocaleString() : "省 ¥" + (-cs.fareDelta).toLocaleString()) : "已知车费不变";
+    box.append(h("div", { class: "pm" }, "💴 " + fare + (cs.fareUnknown ? "（有路段票价未核实）" : "")));
+    cs.tickets.forEach((t) => box.append(h("div", { class: "issue " + (t.level === "error" ? "error" : "") }, h("b", { text: "🎫 票" }), h("span", { text: t.message }))));
+    const v = C.validate(p.rb), errs = v.issues.filter((i) => i.level === "error");
+    if (errs.length) box.append(h("div", { class: "issue error" }, h("b", { text: "校验" }), h("span", { text: errs.length + " 个错误：" + errs[0].message })));
+    box.append(h("div", { class: "sub", text: "地图上的彩色路线是新方案，灰色虚线是原方案。新写的时刻标「未核实」。" }));
+    box.append(h("div", { class: "row" }, h("button", { class: "btn small primary", type: "button", onclick: acceptPending }, "采用这个新方案"), h("button", { class: "btn small", type: "button", onclick: discardPending }, "放弃")));
+    return box;
+  }
+  function markTurn(res) { const t = [...S.turns].reverse().find((x) => x.meta && S.pending && x.meta.pendingAt === S.pending.at); if (t) { t.meta.resolved = res; t.meta.version = S.pending.rb.version; } }
+  function acceptPending() {
+    if (!S.pending) return;
+    markTurn("accepted");
+    S.history.push({ v: S.rb.version || 1, at: Date.now(), instruction: S.pending.instruction, summary: S.pending.cs.count + " 处修改", rb: S.rb });
+    if (S.history.length > 15) S.history.shift();
+    S.rb = S.pending.rb; S.pending = null; S.lastAt = null; S.sim.lag = 0;
+    save(); refreshAll(true); toast("已采用 v" + S.rb.version + (S.mode === "live" ? "，随行已切到新方案" : "，可以在「随行」里开始导航"));
+  }
+  function discardPending() { if (!S.pending) return; markTurn("discarded"); S.pending = null; save(); refreshAll(true); toast("已放弃这次修改"); }
+  function undo(toIndex) {
+    if (!S.history.length) return;
+    if (S.pending) { markTurn("discarded"); S.pending = null; }
+    const i = toIndex == null ? S.history.length - 1 : toIndex;
+    const h0 = S.history[i];
+    S.history = S.history.slice(0, i);
+    S.rb = h0.rb; if (!variantById(S.dayVar)) S.dayVar = S.rb.days[0].variants[0].id;
+    S.turns.push({ role: "note", content: "已回到 v" + h0.v + "（撤销了之后的修改）" });
+    save(); refreshAll(true); toast("已回到 v" + h0.v);
+  }
+  function vdot(x) { const st = C.verifyOf(x); return h("span", { class: "vd " + st, title: C.VERIFY[st], "aria-label": C.VERIFY[st] }); }
+  function renderPendingBar() {
+    const b = $("#pendingBar"); if (!b) return;
+    b.hidden = !S.pending; b.textContent = ""; b.style.top = (S.mode === "live" ? 196 : 108) + "px";
+    if (!S.pending) return;
+    b.append(h("span", { text: "预览中 · " + S.pending.cs.count + " 处修改" }), h("button", { class: "btn small primary", type: "button", onclick: acceptPending }, "采用"), h("button", { class: "btn small", type: "button", onclick: discardPending }, "放弃"));
   }
   function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(110, t.scrollHeight) + "px"; }
 
@@ -397,6 +458,14 @@
     box.append(h("div", { class: "row sub", style: "margin-top:6px" },
       h("span", { text: rb.days.length + " 天 · " + rb.days.reduce((n, d) => n + d.variants.length, 0) + " 套方案" }), h("span", { text: "· 主方案 " + st.stops + " 站" }),
       st.fare ? h("span", { class: "num", text: "· 已知车船费 ¥" + st.fare.toLocaleString() }) : null, rb.sample ? h("span", { class: "chip grey", text: "示例数据" }) : null));
+    const vc = C.verifyCounts(c.v);
+    box.append(h("div", { class: "row sub", style: "margin-top:6px" }, h("span", null, vdot({ verify: { status: "verified" } }), " 已核实 " + vc.verified), h("span", null, vdot({ verify: { status: "single" } }), " 单一来源/未核实 " + (vc.single + vc.unverified)), h("span", null, vdot({ verify: { status: "conflict" } }), " 冲突 " + vc.conflict)));
+    const verRow = h("div", { class: "row", style: "margin-top:8px" }, h("span", { class: "chip " + (S.pending ? "warn" : ""), text: S.pending ? "预览 v" + rb.version + "（未采用）" : "当前 v" + (rb.version || 1) }));
+    if (S.history.length && !S.pending) verRow.append(h("button", { class: "btn small", type: "button", onclick: () => undo() }, "撤销到 v" + S.history[S.history.length - 1].v));
+    if (S.history.length) verRow.append(h("details", { class: "vers" }, h("summary", { text: "版本记录（" + S.history.length + "）" }), ...S.history.map((x, i) => h("div", { class: "verrow" }, h("span", { class: "num", text: "v" + x.v }), h("span", { class: "sub", text: new Date(x.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 被修改：「" + (x.instruction || "手动").slice(0, 30) + "」· " + x.summary }), h("button", { class: "btn small", type: "button", onclick: () => undo(i) }, "回到这版")))));
+    box.append(verRow);
+    if (S.pending) box.append(previewCard({ pendingAt: S.pending.at }));
+    if (rb.tickets && rb.tickets.length) box.append(h("div", { class: "label", text: "票夹" }), h("div", { class: "tickets" }, rb.tickets.map((t) => h("div", { class: "ticket" }, h("div", { style: "font-weight:700" }, "🎫 " + t.name), h("div", { class: "sub", text: [t.section, t.seats].filter(Boolean).join(" · ") }), h("div", { class: "row" }, t.changeable === false ? h("span", { class: "chip err", text: "不可改签" }) : h("span", { class: "chip", text: "可改签" }), t.rule ? h("span", { class: "sub", text: t.rule }) : null)))));
     const seg = h("div", { class: "seg", role: "group", "aria-label": "日程与方案" });
     rb.days.forEach((d) => d.variants.forEach((v) => seg.append(h("button", { type: "button", "aria-pressed": String(v.id === S.dayVar), onclick: () => { S.dayVar = v.id; S.lastAt = null; refreshAll(true); save(); } }, d.label + " · " + v.name))));
     box.append(seg);
@@ -412,24 +481,27 @@
     if (issues.length) box.append(h("div", { class: "issues" }, issues.map((i) => h("div", { class: "issue " + i.level }, h("b", { text: i.level === "error" ? "错误" : "提醒" }), h("span", { text: i.message })))));
     const tl = h("div", { class: "tl" }), live = S.mode === "live" ? liveNow() : null;
     c.v.stops.forEach((s, i) => {
+      const csItems = S.pending ? (S.pending.cs.variants.find((x) => x.id === c.v.id) || { items: [] }).items.filter((it) => it.stopId === s.id) : [];
       if (i && s.legIn) {
-        const L = s.legIn, prev = c.v.stops[i - 1];
+        const L = s.legIn, prev = c.v.stops[i - 1], tk = C.ticketFor(rb, s.id);
         tl.append(h("div", { class: "leg-row " + L.mode, style: "--c:" + modeColor(L.mode) }, h("span"), h("span", { class: "line" }),
-          h("div", { class: "txt" }, h("span", { text: MODE_ICON[L.mode] || "" }), h("b", { text: (C.MODES[L.mode] || {}).label + " " + (L.minutes ? L.minutes + " 分" : "") }), h("span", { text: L.summary || "" }), Number.isFinite(L.fare) && L.fare > 0 ? h("span", { class: "num", text: "¥" + L.fare.toLocaleString() }) : null,
+          h("div", { class: "txt" }, h("span", { text: MODE_ICON[L.mode] || "" }), h("b", { text: (C.MODES[L.mode] || {}).label + " " + (L.minutes ? L.minutes + " 分" : "") }), vdot(L), h("span", { text: L.summary || "" }), tk ? h("span", { class: "chip", text: "🔒 " + tk.name.split("·")[0].trim() }) : (rb.tickets && /特急/.test(L.summary || "") ? h("span", { class: "chip err", text: "没有特急券" }) : null), Number.isFinite(L.fare) && L.fare > 0 ? h("span", { class: "num", text: "¥" + L.fare.toLocaleString() }) : null,
             ...links(prev, s).filter((x) => x[0] !== "Google 地图").slice(0, 2).map(([t, u]) => h("a", { href: u, target: "_blank", rel: "noopener", text: t })))));
       }
       const done = S.checkins[ckey(c.v, s)] != null, here = live && live.at === i;
-      tl.append(h("div", { class: "stop" + (s.optional ? " optional" : "") + (done ? " done" : "") + (here ? " here" : ""), role: "button", tabindex: "0", onclick: () => openStop(i), onkeydown: (e) => { if (e.key === "Enter") openStop(i); } },
-        h("div", { class: "time" }, s.arrive || s.depart || "", s.arrive && s.depart && s.arrive !== s.depart ? h("small", { text: "→ " + s.depart }) : null),
+      const isAdd = csItems.some((x) => x.type === "add"), timeIt = csItems.find((x) => x.type === "time");
+      tl.append(h("div", { class: "stop" + (s.optional ? " optional" : "") + (done ? " done" : "") + (here ? " here" : "") + (isAdd ? " added" : "") + (timeIt ? " moved" : ""), role: "button", tabindex: "0", onclick: () => openStop(i), onkeydown: (e) => { if (e.key === "Enter") openStop(i); } },
+        h("div", { class: "time" }, s.arrive || s.depart || "", vdot(s), s.arrive && s.depart && s.arrive !== s.depart ? h("small", { text: "→ " + s.depart }) : null, timeIt ? h("small", { class: "was", text: "原 " + timeIt.before }) : null),
         h("div", { class: "rail" }, h("span", { class: "n", text: i + 1 })),
         h("div", { class: "body" }, h("div", null, h("span", { class: "name", text: (KIND_ICON[s.kind] || "") + " " + s.name }), s.nameLocal && s.nameLocal !== s.name ? h("span", { class: "local", text: s.nameLocal }) : null),
           s.mustBuy ? h("div", { class: "tip", text: "🛍 " + s.mustBuy }) : s.tips[0] ? h("div", { class: "tip", text: "💡 " + s.tips[0] }) : null,
           h("div", { class: "flags" }, s.fixed ? h("span", { class: "chip warn", text: "固定时刻" }) : null, s.lastDeparture ? h("span", { class: "chip err", text: "末班 " + s.lastDeparture }) : null, s.optional ? h("span", { class: "chip grey", text: "可选" }) : null, s.tags.includes("sunset") ? h("span", { class: "chip live", text: "日落" }) : null, done ? h("span", { class: "chip", text: "✓ 已打卡 " + fmt(S.checkins[ckey(c.v, s)]) }) : null))));
     });
     box.append(tl);
+    if (S.pending) { const rm = (S.pending.cs.variants.find((x) => x.id === c.v.id) || { items: [] }).items.filter((x) => x.type === "remove"); if (rm.length) box.append(h("div", { class: "issues" }, rm.map((x) => h("div", { class: "issue error" }, h("b", { text: "将删除" }), h("span", { text: x.text.replace(/^－\s*/, "") }))))); }
     box.append(h("div", { class: "row", style: "margin-top:14px" },
       rb.status !== "final" ? h("button", { class: "btn primary", type: "button", onclick: () => { S.rb.status = "final"; save(); refreshAll(); toast("已定稿：随行模式会按这个版本跟着你走"); } }, "定稿") : null,
-      h("button", { class: "btn", type: "button", onclick: () => setMode("live") }, "开始随行"),
+      h("button", { class: "btn" + (rb.status === "final" ? " primary" : ""), type: "button", onclick: () => setMode("live") }, "开始随行导航"),
       h("button", { class: "btn", type: "button", onclick: copyText }, "复制文字版")));
   }
   function copyText() {
@@ -469,6 +541,9 @@
       add("时刻", s.fixed ? "固定，不会被自动重排" : s.optional ? "可选，晚点时可能被取消" : null);
       if (s.tags.includes("sunset") && c.day.date) { const sun = C.sunTimes(c.day.date, s.lat, s.lng, 9); add("日落", fmt(sun.sunset) + "（此地当天，天文算法）"); }
       sc.append(kv);
+      const vs = [["时刻", s], ["交通", s.legIn]].filter((x) => x[1]);
+      sc.append(h("div", { class: "label", text: "核实与来源" }), h("div", { class: "srcs" }, vs.map(([k, o]) => h("div", { class: "src" }, h("div", null, vdot(o), " ", k + "：" + C.VERIFY[C.verifyOf(o)]), ...((o.verify && o.verify.sources) || []).map((x) => h("div", { class: "sub", text: "· " + x.name + (x.at ? "（" + x.at + "）" : "") + "：" + (x.note || "") })), !(o.verify && o.verify.sources && o.verify.sources.length) ? h("div", { class: "sub", text: "· 没有来源记录：出发前请用官方时刻或现场站牌确认" }) : null))));
+      if (s.phrase) sc.append(h("div", { class: "label", text: "日语问句" }), phraseRow(s.phrase));
       if (s.tips.length) sc.append(h("div", { class: "label", text: "攻略" }), h("ul", { class: "tips" }, s.tips.map((t) => h("li", { text: t }))));
       sc.append(h("div", { class: "label", text: "导航与查车" }), h("div", { class: "linkrow" }, links(prev, s).concat(prev ? [["实景（Apple 地图）", `https://maps.apple.com/?ll=${s.lat},${s.lng}&q=${encodeURIComponent(s.nameLocal || s.name)}&t=k`]] : []).map(([t, u]) => h("a", { href: u, target: "_blank", rel: "noopener", text: t }))));
       // 附近
@@ -599,6 +674,9 @@
     const R = 34, CIRC = 2 * Math.PI * R;
     now.append(h("div", { class: "nowcard" }, h("div", { class: "state", text: state }), h("div", { class: "title", text: title }), h("div", { class: "meta", text: meta }),
       ringVal !== "" ? h("div", { class: "ring", html: `<svg viewBox="0 0 78 78"><circle cx="39" cy="39" r="${R}" fill="none" stroke="var(--line)" stroke-width="6"/><circle cx="39" cy="39" r="${R}" fill="none" stroke="${st.lateBy >= 5 ? "var(--live)" : "var(--accent)"}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC * (1 - Math.max(0, Math.min(1, frac)))}"/></svg>` }, h("div", { class: "v" }, h("span", null, String(ringVal), h("small", { text: "分钟" + ringLbl })))) : null));
+    const ns = C.nextStep(c.v, st);
+    if (ns && !ns.done) now.insertBefore(h("div", { class: "nextstep" }, h("div", { class: "label", style: "margin:0", text: "下一步" }), h("div", { class: "nsb", text: ns.text }), ns.detail ? h("div", { class: "sub", text: ns.detail }) : null, ns.phrase ? phraseRow(ns.phrase) : null,
+      h("div", { class: "linkrow" }, ns.links.map((l) => h("a", { href: l.url, target: "_blank", rel: "noopener", class: l.label.startsWith("Apple") ? "go" : "" }, (l.label.startsWith("Apple") ? "🧭 " : "") + l.label)))), now.querySelector(".nowcard"));
     const tgtIdx = st.at != null ? st.at : st.next;
     now.append(h("div", { class: "actions" },
       h("button", { type: "button", onclick: () => { const i = st.at != null ? st.at : st.next; if (i != null) { toggleCheck(c.v, stops[i]); toast(S.checkins[ckey(c.v, stops[i])] != null ? "已打卡「" + stops[i].name + "」" : "已取消打卡"); } } }, h("span", { html: ICON.check }), "打卡"),
@@ -614,6 +692,9 @@
     box.append(now);
   }
 
+  function phraseRow(text) {
+    return h("div", { class: "phrase" }, h("span", { lang: "ja", text }), h("button", { class: "btn small", type: "button", "aria-label": "朗读日语", onclick: () => { try { const u = new SpeechSynthesisUtterance(text.replace(/[「」]/g, "")); u.lang = "ja-JP"; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { toast("这个环境不能朗读，可以把手机给对方看"); } } }, "🔊 朗读"));
+  }
   /* 演示时钟主循环 */
   let raf = null, lastT = 0, lastUI = 0;
   function loop() {
@@ -637,7 +718,7 @@
     }
     const hd = lastPos && C.dist(lastPos, st.pos) > 5 ? C.bearing(lastPos, st.pos) : null; lastPos = st.pos;
     if (S.mode === "live") {
-      MapV.setRoute(c.v, st); MapV.setMe(st.pos, hd); renderPins(st);
+      MapV.setRoute(c.v, st, ghostOf(c)); MapV.setMe(st.pos, hd); renderPins(st);
       if (S.follow) MapV.centerOn(st.pos[0], st.pos[1], Math.max(MapV.scale, st.phase === "moving" && (st.plan.path && C.pathLength(st.plan.path) > 20000) ? 0.004 : 0.02));
       renderIsland(st, c);
       const tt = $("#simTime"), rg = $("#simRange"); if (tt) tt.textContent = fmt(st.minute); if (rg && document.activeElement !== rg) rg.value = Math.round(st.minute);
@@ -684,9 +765,10 @@
       const done = g.idx.every((i) => S.checkins[ckey(c.v, c.v.stops[i])] != null);
       const here = st && g.idx.includes(st.at), next = st && st.at == null && g.idx.includes(st.next);
       const sel = S.selStop != null && g.idx.includes(S.selStop);
+      const added = S.pending && S.pending.cs.variants.some((x) => x.items.some((it) => it.type === "add" && g.idx.some((i) => c.v.stops[i].id === it.stopId)));
       const prio = sel ? 5 : here ? 4 : next ? 3.5 : (st && st.next != null && g.idx.includes(st.next)) ? 3 : g.s.kind === "event" || g.s.kind === "hotel" ? 2 : 1;
       pins.push({ lat: g.lat, lng: g.lng, num: g.idx.map((i) => i + 1).join("·"), label: g.s.name, prio, aria: "第 " + g.idx.map((i) => i + 1).join("、") + " 站 " + g.s.name,
-        cls: [done ? "done" : "", here ? "here" : "", next || (st && g.idx.includes(st.next)) ? "next" : "", sel ? "sel" : "", g.s.optional ? "optional" : ""].join(" "), onTap: () => openStop(g.idx[0]) });
+        cls: [done ? "done" : "", here ? "here" : "", next || (st && g.idx.includes(st.next)) ? "next" : "", sel ? "sel" : "", g.s.optional ? "optional" : "", added ? "added" : ""].join(" "), onTap: () => openStop(g.idx[0]) });
     });
     MapV.setPins(pins);
   }
@@ -697,12 +779,14 @@
     const pts = []; c.v.stops.forEach((s) => pts.push([s.lat, s.lng]));
     MapV.fit(pts, 0.06, ms);
   }
+  function ghostOf(c) { if (!S.pending || !c || !S.rb) return null; const o = variantById(c.v.id, S.rb); return o ? o.v : null; }
   function refreshAll(fit) {
     const c = cur();
-    $("#tripTitle").textContent = S.rb ? S.rb.title : "新路线";
+    $("#tripTitle").textContent = S.rb ? S.rb.title + (S.rb.version ? " · v" + S.rb.version : "") : "新路线";
     const ts = $("#tripStatus"); ts.textContent = S.rb ? (S.rb.status === "final" ? "已定稿" : "草稿") : "未开始"; ts.className = "chip " + (S.rb && S.rb.status === "final" ? "" : "grey");
     const st = S.mode === "live" ? liveNow() : null;
-    MapV.setRoute(c ? c.v : null, st);
+    MapV.setRoute(c ? c.v : null, st, ghostOf(c));
+    renderPendingBar();
     MapV.setTrack(S.mode === "memo" || S.mode === "live" ? S.track : []);
     MapV.setMe(st ? st.pos : null, null);
     if (S.mode !== "live") $("#island").hidden = true;
@@ -715,7 +799,7 @@
     S.mode = m; $("#app").scrollTop = 0; if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
     document.querySelectorAll(".modes button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === m)));
     ["chat", "book", "live", "memo"].forEach((x) => { $("#pane-" + x).hidden = x !== m; });
-    Sheet.set({ chat: 0.58, book: 0.55, live: 0.46, memo: 0.42 }[m]);
+    Sheet.set({ chat: 0.58, book: 0.55, live: 0.52, memo: 0.42 }[m]);
     if (m !== "live") { S.sim.playing = false; }
     if (m === "live") { S.follow = true; S.lastAt = null; }
     closeDetailSilently();
@@ -731,8 +815,9 @@
     if (!m.hidden && m.dataset.kind === kind) { m.hidden = true; return; }
     m.dataset.kind = kind; m.textContent = ""; m.hidden = false;
     if (kind === "trips") {
-      m.append(h("button", { type: "button", onclick: () => { resetSample(); m.hidden = true; } }, "📘 和歌山演唱会（示例，重置）"),
-        h("button", { type: "button", onclick: () => { S.rb = null; S.turns = []; S.track = []; S.checkins = {}; S.dayVar = null; save(); m.hidden = true; setMode("chat"); } }, "＋ 新路线（从对话开始）"),
+      m.append(h("button", { type: "button", onclick: () => { loadSample2(); m.hidden = true; } }, "🌊 串本·白浜一日游（示例 2，11/22）"),
+        h("button", { type: "button", onclick: () => { resetSample(); m.hidden = true; } }, "📘 和歌山演唱会（示例，重置）"),
+        h("button", { type: "button", onclick: () => { S.rb = null; S.turns = []; S.track = []; S.checkins = {}; S.dayVar = null; S.history = []; S.pending = null; save(); m.hidden = true; setMode("chat"); } }, "＋ 新路线（从对话开始）"),
         h("button", { type: "button", onclick: () => { m.hidden = true; copyText(); } }, "📋 复制文字版路书"),
         h("div", { class: "hint", text: "路书与对话只保存在这台设备的浏览器里。" }));
     } else {
@@ -759,8 +844,16 @@
       { role: "assistant", content: r2.reply, meta: { quick: r2.quickReplies, who: "演示 AI", rb: true, diffs: [{ type: "add", text: "+ 周六 A · 上友岛 12 站" }, { type: "add", text: "+ 周六 B · 停航备选 8 站" }, { type: "add", text: "+ 周日 · 和歌浦演出 8 站" }], issues: { errors: v.issues.filter((i) => i.level === "error").length, warns: v.issues.filter((i) => i.level !== "error").length } } }
     ];
   }
+  async function loadSample2() {
+    try {
+      const rb = await fetch("data/sample-kushimoto.json").then((r) => r.json());
+      S.rb = rb; S.history = []; S.pending = null; S.dayVar = "k1a"; S.checkins = {}; S.track = []; S.sim.minute = 11 * 60 + 30; S.sim.lag = 0; S.lastAt = null;
+      S.turns = [{ role: "note", content: "示例 2：串本·白浜一日游（11/22 周日，2 人）。文档里核实过的时刻标绿色，推算的标黄色。试试说「从白浜直接上车回大阪」或「我实际 14:07 才到白浜」。" }];
+      save(); setMode("book");
+    } catch { toast("示例 2 加载失败"); }
+  }
   function resetSample() {
-    S.rb = C.clone(S.sample); S.turns = seedTurns(); S.dayVar = "d1a"; S.checkins = {}; S.track = []; S.sim.minute = 10 * 60 + 5; S.sim.lag = 0; S.lastAt = null;
+    S.rb = C.clone(S.sample); S.rb.version = 1; S.history = []; S.pending = null; S.turns = seedTurns(); S.dayVar = "d1a"; S.checkins = {}; S.track = []; S.sim.minute = 10 * 60 + 5; S.sim.lag = 0; S.lastAt = null;
     save(); setMode("chat");
   }
 
@@ -772,8 +865,8 @@
       S.coast = coast; S.sample = sample; MapV.setBase(coast);
     } catch { toast("示例数据加载失败，请刷新"); return; }
     const saved = store.get("state");
-    if (saved && saved.v === 1) { S.rb = saved.rb; S.turns = saved.turns || []; S.dayVar = saved.dayVar; S.checkins = saved.checkins || {}; S.track = saved.track || []; if (Number.isFinite(saved.minute)) S.sim.minute = saved.minute; }
-    else { S.rb = C.clone(S.sample); S.turns = seedTurns(); }
+    if (saved && saved.v === 1) { S.rb = saved.rb; S.turns = saved.turns || []; S.history = saved.history || []; S.pending = saved.pending || null; S.dayVar = saved.dayVar; S.checkins = saved.checkins || {}; S.track = saved.track || []; if (Number.isFinite(saved.minute)) S.sim.minute = saved.minute; }
+    else { S.rb = C.clone(S.sample); S.rb.version = 1; S.turns = seedTurns(); }
     document.querySelectorAll(".modes button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
     $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
     $("#input").addEventListener("input", autosize);

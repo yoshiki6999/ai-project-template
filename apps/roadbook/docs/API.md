@@ -26,7 +26,8 @@ POST /api/roadbook/replan
 POST /api/roadbook/chat
   Input: { messages: [{ role: "user"|"assistant", content: string ≤4000 }] (1-40 条，最后一条为 user),
            roadbook: Roadbook|null, context?: { phase, now, dayLabel, where, next, weather } }
-  Output: { reply, proposals[], roadbook: Roadbook|null, quickReplies[], issues[], model, usage }
+  Output: { reply, proposals[], roadbook: Roadbook|null, ops: [{ op: "insert"|"remove"|"replace", variant, stop?, after?, data? }], quickReplies[], issues[], model, usage }
+  说明: 修改已有路书时返回 ops（不重写整份路书），客户端预览差异、用户确认后生效
   Auth: required；每 IP 每 10 分钟 20 次（可配置）
   Errors: 400 BAD_MESSAGES，401，429 RATE_LIMITED / AI_RATE_LIMIT，422 AI_REFUSED，502 AI_*，503 AI_NOT_CONFIGURED（前端转演示模式）
 

@@ -43,7 +43,7 @@ async function setSim(page, hhmm) {
 try {
   // 1. 打开：示例对话 + 地图路线，输入框必须在屏幕内
   const { ctx, page } = await newPage();
-  ok("首屏：标题是和歌山演唱会", (await page.locator("#tripTitle").innerText()) === "和歌山演唱会");
+  ok("首屏：标题是和歌山演唱会", (await page.locator("#tripTitle").innerText()).startsWith("和歌山演唱会"));
   ok("首屏：示例对话含两个方案卡", (await page.locator(".prop").count()) === 2);
   const comp = await page.locator("#composer").boundingBox();
   ok("首屏：输入框完整显示在屏幕内", comp && comp.y + comp.height <= 932 + 1, JSON.stringify(comp));
@@ -56,10 +56,14 @@ try {
   ok("异常：空消息不会发送", (await userMsgs(page)) === n0);
   await page.fill("#input", "在等船时加一顿海鲜午饭");
   await page.click("#btnSend"); await page.click("#btnSend");
-  await page.waitForSelector(".diffs span.add >> text=加太港周边海鲜食堂", { timeout: 8000 });
+  await page.waitForSelector("#chatList .preview", { timeout: 8000 });
   ok("异常：连续双击只发送一次", (await userMsgs(page)) === n0 + 1);
-  ok("对话改路书：AI 回复并高亮新增站点", (await page.locator(".msg.ai").last().innerText()).includes("海鲜午饭"));
-  await shot(page, "02-共创-一句话改路书");
+  const pv = await page.locator("#chatList .preview").innerText();
+  ok("改方案：先出修改预览（新增 + 改时间），不直接生效", pv.includes("＋ 11:50 加太港周边海鲜食堂") && pv.includes("12:47") && (await page.locator("#pendingBar:not([hidden])").count()) === 1);
+  ok("改方案：地图同时画出新路线与原方案虚影", (await page.locator("#gRoute path.ghost").count()) > 3 && (await page.locator(".pin.added").count()) >= 1);
+  await shot(page, "02-共创-修改预览");
+  await page.locator("#chatList .preview button", { hasText: "采用这个新方案" }).click();
+  ok("改方案：采用后成为 v2，预览条消失", (await page.locator("#tripTitle").innerText()).includes("v2") && (await page.locator("#pendingBar[hidden]").count()) === 1);
 
   // 3. 路书：新增站点出现在时间轴，校验与日落信息可见
   await page.click('.modes button[data-mode="book"]');
@@ -149,7 +153,31 @@ try {
   await shot(page, "08-新路线-方案卡");
   await page.locator(".prop button").first().click();
   await page.waitForSelector(".msg.ai >> text=已生成路书", { timeout: 8000 });
-  ok("新路线：选方案后生成路书", (await page.locator("#tripTitle").innerText()) === "和歌山演唱会");
+  ok("新路线：选方案后生成路书", (await page.locator("#tripTitle").innerText()).startsWith("和歌山演唱会"));
+
+  // 12b. 示例 2：串本·白浜 —— 核实色点、票夹、改方案影响已购票、下一步导航、撤销
+  await page.click("#btnMenu");
+  await page.locator("#menu button", { hasText: "串本" }).click();
+  await page.waitForSelector("#bookScroll .ticket");
+  ok("示例 2：票夹与核实色点（绿/黄/红）都显示", (await page.locator("#bookScroll .vd.verified").count()) > 3 && (await page.locator("#bookScroll .vd.conflict").count()) >= 1 && (await page.locator("#bookScroll .chip", { hasText: "🔒" }).count()) === 1);
+  await shot(page, "12-示例2-路书核实与票夹");
+  await page.click('.modes button[data-mode="chat"]');
+  await page.fill("#input", "从白浜直接上车回大阪");
+  await page.click("#btnSend");
+  await page.waitForSelector("#chatList .preview", { timeout: 8000 });
+  const kp = await page.locator("#chatList .preview").innerText();
+  ok("改方案：预览写明删掉纪伊田边、早鸟票不能改签", kp.includes("纪伊田边") && kp.includes("不能改签"));
+  await shot(page, "13-示例2-改方案预览含票影响");
+  await page.locator("#pendingBar button", { hasText: "采用" }).click();
+  await page.click('.modes button[data-mode="live"]');
+  await setSim(page, "11:30");
+  const nsText = await page.locator(".nextstep").innerText();
+  ok("随行：下一步卡片含大字指令与日语问句", nsText.includes("离开串本海中公园") && nsText.includes("串本駅"));
+  ok("随行：下一步可一键导航（Apple 地图步行）", (await page.locator('.nextstep a[href*="maps.apple.com/?saddr="][href*="dirflg=w"]').count()) === 1);
+  await shot(page, "14-示例2-随行下一步导航");
+  await page.click('.modes button[data-mode="book"]');
+  await page.locator("#bookScroll button", { hasText: "撤销到 v1" }).click();
+  ok("撤销：回到 v1，纪伊田边站回来了", (await page.locator("#tripTitle").innerText()).includes("v1") && (await page.locator("#bookScroll .stop", { hasText: "纪伊田边站" }).count()) === 1);
   await ctx.close();
 
   // 13. 真实定位：授权 → 用 GPS 判断“现在在加太港”

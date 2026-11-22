@@ -15,8 +15,9 @@ const STOP = obj({
   id: str, name: str, nameLocal: str, kind: { type: "string", enum: core.KINDS }, lat: { type: "number" }, lng: { type: "number" },
   arrive: nullable(str), depart: nullable(str), fixed: { type: "boolean" }, optional: { type: "boolean" }, minStay: nullable({ type: "integer" }),
   lastDeparture: nullable(str), hours: nullable(obj({ open: str, close: str })), legIn: nullable(LEG),
-  tips: { type: "array", items: str }, mustBuy: nullable(str), photo: nullable(str), tags: { type: "array", items: str }
+  tips: { type: "array", items: str }, mustBuy: nullable(str), photo: nullable(str), phrase: nullable(str), tags: { type: "array", items: str }
 });
+const OP = obj({ op: { type: "string", enum: ["insert", "remove", "replace"] }, variant: str, stop: nullable(str), after: nullable(str), data: nullable(STOP) });
 const ROADBOOK = obj({
   title: str, subtitle: str, tz: str, status: { type: "string", enum: ["draft", "final"] },
   days: { type: "array", items: obj({ id: str, date: str, label: str, variants: { type: "array", items: obj({ id: str, name: str, when: str, stops: { type: "array", items: STOP } }) } }) }
@@ -25,6 +26,7 @@ export const RESPONSE_SCHEMA = obj({
   reply: str,
   proposals: { type: "array", items: obj({ id: str, title: str, summary: str, highlights: { type: "array", items: str }, durationText: str, costText: str, walkKm: { type: "number" }, risk: str }) },
   roadbook: nullable(ROADBOOK),
+  ops: { type: "array", items: OP },
   quickReplies: { type: "array", items: str }
 });
 
@@ -70,14 +72,16 @@ export async function planChat({ messages, roadbook, context }) {
     try { parsed = JSON.parse(text); } catch { parsed = core.extractJSON(text); }
     if (!parsed) throw new AIError("AI_BAD_OUTPUT", 502, "AI 返回的内容无法解析，请重试");
     const out = core.coerceAIResult(parsed);
-    if (out.roadbook) {
-      out.roadbook = core.mergeAIRoadbook(roadbook, out.roadbook);
-      const v = core.validate(out.roadbook);
+    let candidate = null, opErrors = [];
+    if (out.ops.length && roadbook) { const r = core.applyOps(roadbook, out.ops); candidate = r.rb; opErrors = r.errors; }
+    else if (out.roadbook) { out.roadbook = core.mergeAIRoadbook(roadbook, out.roadbook); candidate = out.roadbook; }
+    if (candidate) {
+      const v = core.validate(candidate);
       issues = v.issues;
-      const errors = v.issues.filter((x) => x.level === "error");
+      const errors = v.issues.filter((x) => x.level === "error").map((x) => x.message).concat(opErrors);
       if (errors.length && round < config.ai.maxRepairRounds) {
         turns.push({ role: "assistant", content: msg.content }); // 原样回传（含思考块）
-        turns.push({ role: "user", content: "路书校验没有通过，请只修正以下问题，保持其他内容不变，重新输出完整 JSON：\n" + errors.map((x) => "- " + x.message).join("\n") });
+        turns.push({ role: "user", content: "修改校验没有通过，请只修正以下问题，保持其他内容不变，重新输出完整 JSON：\n" + errors.map((x) => "- " + x).join("\n") });
         continue;
       }
     }

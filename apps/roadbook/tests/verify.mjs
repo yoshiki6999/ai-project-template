@@ -51,6 +51,26 @@ ok("core: coerceAIResult 丢弃非法字段", co.reply === "" && co.proposals.le
 const merged = core.mergeAIRoadbook(sample, core.compactForAI(sample));
 ok("core: AI 返回路书后能补回轨迹", merged.days[0].variants[0].stops[1].legIn.path.length > 5);
 
+// ---------- 修改操作 / 改动清单 / 票 / 下一步 ----------
+const ku = JSON.parse(readFileSync(path.join(root, "public", "data", "sample-kushimoto.json"), "utf8"));
+ok("core: 示例 2（串本·白浜）校验无 error", core.validate(ku).ok);
+const kv = ku.days[0].variants[0], tan = kv.stops.find((s) => s.nameLocal === "紀伊田辺駅"), ten = kv.stops[kv.stops.length - 1];
+const ap = core.applyOps(ku, [{ op: "remove", variant: "k1a", stop: tan.id }, { op: "update", variant: "k1a", stop: ten.id, set: { legIn: { summary: "特急黑潮 34 号（白浜上车）" } } }, { op: "remove", variant: "k1a", stop: "不存在" }]);
+ok("core: applyOps 执行有效操作、报告无效操作", ap.rb.days[0].variants[0].stops.length === kv.stops.length - 1 && ap.errors.length === 1);
+ok("core: applyOps 不改动原路书", ku.days[0].variants[0].stops.length === kv.stops.length);
+ok("core: update 交通段保留轨迹", ap.rb.days[0].variants[0].stops.slice(-1)[0].legIn.path.length > 3);
+const cs = core.changeSet(ku, ap.rb);
+ok("core: 改动清单列出删除与交通变化", cs.variants[0].items.some((i) => i.type === "remove") && cs.variants[0].items.some((i) => i.type === "leg"));
+ok("core: 动到不可改签的早鸟票 → 报 error 级票影响", cs.tickets.some((t) => t.level === "error" && t.message.includes("不能改签")));
+const ins = core.applyOps(ku, [{ op: "insert", variant: "k1a", after: kv.stops[0].id, data: { name: "咖啡", kind: "food", lat: 33.5, lng: 135.8, arrive: "10:00", depart: "10:05" } }]);
+ok("core: insert 自动补 id、新站标未核实", ins.errors.length === 0 && core.verifyOf(ins.rb.days[0].variants[0].stops[1]) === "unverified");
+const vc = core.verifyCounts(kv);
+ok("core: 核实统计含已核实与冲突", vc.verified >= 5 && vc.conflict === 1);
+const ns = core.nextStep(kv, core.liveStatus(kv, core.toMin("11:30")));
+ok("core: 下一步给出大字指令、日语问句与导航链接", /离开/.test(ns.text) && ns.phrase.includes("串本駅") && ns.links[0].url.startsWith("https://maps.apple.com/?saddr="));
+const late = core.replan(kv, core.toMin("13:19"), 48);
+ok("core: 晚 48 分到白浜 → 守住 34 号且无冲突", late.conflicts.length === 0 && late.variant.stops.slice(-2)[0].depart === "18:32");
+
 // ---------- API ----------
 const server = createServer();
 await new Promise((r) => server.listen(0, "127.0.0.1", r));

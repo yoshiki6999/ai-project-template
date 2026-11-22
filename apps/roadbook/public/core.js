@@ -315,7 +315,7 @@
           var limit = o.depart - (i === stops.length - 1 ? 0 : BOARDING_BUFFER);
           if (atK) { if (fromMinute + delay > o.depart && !viol) viol = { i: i, over: fromMinute + delay - o.depart, why: "missed" }; }
           else if (a > limit && !viol) viol = { i: i, over: a - limit, why: "fixed" };
-          times[i] = { arrive: Math.min(a, o.depart), depart: o.depart };
+          times[i] = { arrive: o.arrive != null && a <= o.arrive ? o.arrive : Math.min(a, o.depart), depart: o.depart };
           t = o.depart;
         } else {
           var d = a + stays[i];
@@ -407,14 +407,16 @@
     "工作方式：",
     "1. 先理解需求（日期、出发地、同行、节奏、预算、必去/避开）。信息不足时最多追问 1 个关键问题，同时给出初步方案，不要只提问。",
     "2. 方案阶段：给出 2-3 个差异明显的方案放进 proposals，写清亮点、总时长、交通费、步行量、风险（如渡轮停航、末班车）。",
-    "3. 用户选定或要求修改时，输出完整的 roadbook（roadbook/v1），只改用户要求的部分，未改动的站点保留原 id。",
+    "3. 全新规划时输出完整 roadbook（roadbook/v1）。修改已有路书时，不要重写整份路书：roadbook 设为 null，改为输出 ops（修改操作列表），只动受影响的站点：{op:'insert', variant:方案id, after:站点id或null(放最前), data:{完整站点}}、{op:'remove', variant, stop:站点id}、{op:'replace', variant, stop:站点id, data:{完整站点，id 不变}}。改一站的时间往往要连带改后面衔接的站，全部写进 ops。",
+    "3b. 路书里 verify.status 为 verified 的时刻是核实过的事实，不要改动它，除非用户明确说现场情况变了；你新写的时刻不要带 verify（界面会标成「未核实」）。tickets 是用户已购的票，覆盖的路段是硬约束：改动它们时，在 reply 里说清楚对票的影响（要不要补票、能否改签、差价大概多少，未核实就说未核实）。",
+    "3c. 每个站点可写 phrase：到这一站时问路或乘车用的一句日语（如「串本駅に行きますか」）。",
     "4. 晴雨、停航等不确定因素，用同一天的多个 variants 表达，并在 when 写明启用条件。",
     "5. 每个站点必须是真实存在的地点：name 写中文、nameLocal 写日文原名，lat/lng 用 WGS84 小数点后 4 位。拿不准的具体店铺不要编造，写成类别（如「加太港周边海鲜食堂」）并在 tips 说明需现场确认。",
     "6. 时间用 24 小时制 HH:MM（当地时间）。legIn 写清 mode（rail/walk/ferry/bus/shuttle/taxi/car）、summary（线路名与换乘点）、minutes、fare（日元，未知填 null）。渡轮、演出、预约等不能改的时间设 fixed=true；可以放弃的点设 optional=true；末班船/末班车写进 lastDeparture。",
     "7. 随行阶段（上下文 phase=live）：结合当前位置、时间、下一站给出简短可执行的建议；需要改行程时输出修改后的完整 roadbook，否则 roadbook 为 null。",
     "8. reply 用中文口语，不超过 120 字；quickReplies 给 2-4 个用户下一步可能说的话。",
-    "只输出一个 JSON 对象，字段：reply（字符串）、proposals（数组，可为空）、roadbook（对象或 null）、quickReplies（字符串数组）。",
-    "roadbook 结构：{title, subtitle, tz:'Asia/Tokyo', status:'draft'|'final', days:[{id, date:'YYYY-MM-DD', label, variants:[{id, name, when, stops:[{id, name, nameLocal, kind:'station'|'sight'|'food'|'hotel'|'port'|'event'|'shop'|'other', lat, lng, arrive, depart, fixed, optional, minStay, lastDeparture, hours:{open,close}|null, legIn:{mode, summary, minutes, fare}|null, tips:[], mustBuy, photo, tags:[]}]}]}]}",
+    "只输出一个 JSON 对象，字段：reply（字符串，只说改了什么，长内容放进路书）、proposals（数组，可为空）、roadbook（对象或 null）、ops（数组，可为空）、quickReplies（字符串数组）。",
+    "roadbook 结构：{title, subtitle, tz:'Asia/Tokyo', status:'draft'|'final', days:[{id, date:'YYYY-MM-DD', label, variants:[{id, name, when, stops:[{id, name, nameLocal, kind:'station'|'sight'|'food'|'hotel'|'port'|'event'|'shop'|'other', lat, lng, arrive, depart, fixed, optional, minStay, lastDeparture, hours:{open,close}|null, legIn:{mode, summary, minutes, fare}|null, tips:[], mustBuy, photo, phrase, tags:[]}]}]}]}",
     "proposals 每项：{id, title, summary, highlights:[], durationText, costText, walkKm, risk}。"
   ].join("\n");
 
@@ -432,6 +434,7 @@
     (oldRb.days || []).forEach(function (d) { (d.variants || []).forEach(function (v) { (v.stops || []).forEach(function (s, i) { if (s.legIn && s.legIn.path) paths[(i ? v.stops[i - 1].id : "") + ">" + s.id + ">" + s.legIn.mode] = s.legIn.path; }); }); });
     rb.days.forEach(function (d) { d.variants.forEach(function (v) { v.stops.forEach(function (s, i) { var key = (i ? v.stops[i - 1].id : "") + ">" + s.id + ">" + (s.legIn && s.legIn.mode); if (s.legIn && !s.legIn.path && paths[key]) s.legIn.path = paths[key]; }); }); });
     if (oldRb.pois && !rb.pois) rb.pois = oldRb.pois;
+    if (oldRb.tickets && !rb.tickets) rb.tickets = oldRb.tickets;
     return rb;
   }
   function contextBlock(ctx) {
@@ -456,13 +459,14 @@
     return msgs;
   }
   function coerceAIResult(x) { // 不信任模型输出：只保留合法字段
-    var out = { reply: "", proposals: [], roadbook: null, quickReplies: [] };
+    var out = { reply: "", proposals: [], roadbook: null, ops: [], quickReplies: [] };
     if (!x || typeof x !== "object") return out;
     out.reply = typeof x.reply === "string" ? x.reply.slice(0, 600) : "";
     if (Array.isArray(x.proposals)) out.proposals = x.proposals.slice(0, 3).filter(function (p) { return p && typeof p.title === "string"; }).map(function (p, i) {
       return { id: String(p.id || "p" + (i + 1)), title: p.title.slice(0, 40), summary: String(p.summary || "").slice(0, 200), highlights: Array.isArray(p.highlights) ? p.highlights.slice(0, 5).map(String) : [], durationText: String(p.durationText || ""), costText: String(p.costText || ""), walkKm: isFinite(p.walkKm) ? +p.walkKm : null, risk: String(p.risk || "") };
     });
     if (x.roadbook && typeof x.roadbook === "object" && Array.isArray(x.roadbook.days)) out.roadbook = x.roadbook;
+    out.ops = Array.isArray(x.ops) ? x.ops.filter(function (o) { return o && typeof o.op === "string"; }).slice(0, 60) : [];
     if (Array.isArray(x.quickReplies)) out.quickReplies = x.quickReplies.slice(0, 4).map(function (q) { return String(q).slice(0, 30); });
     return out;
   }
@@ -483,11 +487,118 @@
     return null;
   }
 
+  /* ---------- 修改操作（ops）：AI 只说"改哪里"，引擎负责落地 ---------- */
+  function applyOps(rbIn, ops) {
+    var rb = clone(rbIn), errors = [];
+    function fv(id) { for (var i = 0; i < rb.days.length; i++) for (var j = 0; j < rb.days[i].variants.length; j++) if (rb.days[i].variants[j].id === id) return { d: rb.days[i], v: rb.days[i].variants[j] }; return null; }
+    (ops || []).forEach(function (op, n) {
+      var where = "第 " + (n + 1) + " 个操作";
+      try {
+        if (op.op === "setMeta") { if (["title", "subtitle", "status"].indexOf(op.key) >= 0) rb[op.key] = op.value; else errors.push(where + "：不能改字段 " + op.key); return; }
+        if (op.op === "addVariant") { var day = rb.days.filter(function (d) { return d.id === op.day; })[0]; if (!day || !op.variant) throw new Error("找不到日程 " + op.day); day.variants.push(op.variant); return; }
+        if (op.op === "replaceVariant") { var rv = op.variant && fv(op.variant.id); if (!rv) throw new Error("找不到方案"); rv.d.variants = rv.d.variants.map(function (x) { return x.id === op.variant.id ? op.variant : x; }); return; }
+        if (op.op === "removeVariant") { var dv = fv(op.variant); if (!dv) throw new Error("找不到方案 " + op.variant); dv.d.variants = dv.d.variants.filter(function (x) { return x.id !== op.variant; }); return; }
+        var f = fv(op.variant); if (!f) throw new Error("找不到方案 " + op.variant);
+        var stops = f.v.stops, idx = -1;
+        var sid = typeof op.stop === "string" ? op.stop : null;
+        if (sid) for (var k = 0; k < stops.length; k++) if (stops[k].id === sid) idx = k;
+        if (op.op === "insert") {
+          var data = op.data || (op.stop && typeof op.stop === "object" ? op.stop : null);
+          if (!data || !data.name) throw new Error("插入的站点不完整");
+          if (!data.id) data.id = "n" + Date.now().toString(36) + n;
+          var at = 0;
+          if (op.after) { at = -1; for (var q = 0; q < stops.length; q++) if (stops[q].id === op.after) at = q + 1; if (at < 0) throw new Error("找不到 after 站点 " + op.after); }
+          stops.splice(at, 0, data);
+        } else if (op.op === "remove") { if (idx < 0) throw new Error("找不到站点 " + sid); stops.splice(idx, 1); }
+        else if (op.op === "replace") { if (idx < 0 || !op.data) throw new Error("找不到站点 " + sid); var nd = clone(op.data); nd.id = sid; if (nd.legIn && stops[idx].legIn && !nd.legIn.path && nd.legIn.mode === stops[idx].legIn.mode) nd.legIn.path = stops[idx].legIn.path; if (!nd.verify && stops[idx].verify && nd.arrive === stops[idx].arrive && nd.depart === stops[idx].depart) nd.verify = stops[idx].verify; stops[idx] = nd; }
+        else if (op.op === "update") { if (idx < 0 || !op.set) throw new Error("找不到站点 " + sid); var cur = stops[idx], set = op.set; var timeChanged = ("arrive" in set && set.arrive !== cur.arrive) || ("depart" in set && set.depart !== cur.depart); Object.keys(set).forEach(function (key) { if (key === "id") return; if (key === "legIn" && set.legIn && cur.legIn) { var lp = cur.legIn.path, lv = cur.legIn.verify; cur.legIn = Object.assign({}, cur.legIn, set.legIn); if (!set.legIn.path && set.legIn.mode === undefined) cur.legIn.path = lp; if (!("verify" in set.legIn) && ("minutes" in set.legIn || "summary" in set.legIn)) delete cur.legIn.verify; else if (!("verify" in set.legIn)) cur.legIn.verify = lv; } else cur[key] = set[key]; }); if (timeChanged && !("verify" in set)) delete cur.verify; }
+        else throw new Error("未知操作 " + op.op);
+      } catch (e) { errors.push(where + "：" + e.message); }
+    });
+    return { rb: rb, errors: errors };
+  }
+
+  /* ---------- 改动清单：给"修改前后对照"用 ---------- */
+  function ticketFor(rb, stopId) { var t = null; (rb.tickets || []).forEach(function (x) { if ((x.covers || []).indexOf(stopId) >= 0) t = x; }); return t; }
+  function variantFare(v) { var f = 0, unknown = 0; v.stops.forEach(function (s, i) { if (i && s.legIn) { if (isFinite(s.legIn.fare) && s.legIn.fare != null) f += +s.legIn.fare; else if (s.legIn.mode === "rail" || s.legIn.mode === "bus") unknown++; } }); return { fare: f, unknown: unknown }; }
+  function changeSet(a, b) {
+    var out = { variants: [], fareDelta: 0, fareUnknown: false, tickets: [], count: 0 };
+    if (!a || !b) return out;
+    var A = {}; a.days.forEach(function (d) { d.variants.forEach(function (v) { A[v.id] = { v: v, d: d }; }); });
+    b.days.forEach(function (d) {
+      d.variants.forEach(function (v) {
+        var old = A[v.id], items = [];
+        if (!old) { items.push({ type: "add", text: "新方案「" + v.name + "」" + v.stops.length + " 站" }); }
+        else {
+          var om = {}; old.v.stops.forEach(function (s) { om[s.id] = s; });
+          var nm = {}; v.stops.forEach(function (s) { nm[s.id] = s; });
+          v.stops.forEach(function (s) {
+            var o = om[s.id];
+            if (!o) { items.push({ type: "add", stopId: s.id, name: s.name, after: s.arrive || s.depart, text: "＋ " + (s.arrive || s.depart || "") + " " + s.name }); return; }
+            var t0 = (o.arrive || "") + "→" + (o.depart || ""), t1 = (s.arrive || "") + "→" + (s.depart || "");
+            var l0 = o.legIn ? o.legIn.mode + "|" + o.legIn.summary + "|" + o.legIn.minutes : "", l1 = s.legIn ? s.legIn.mode + "|" + s.legIn.summary + "|" + s.legIn.minutes : "";
+            if (t0 !== t1) { var arrCh = o.arrive !== s.arrive; items.push({ type: "time", stopId: s.id, name: s.name, before: arrCh ? o.arrive : o.depart, after: arrCh ? s.arrive : s.depart, text: s.name + (arrCh ? "  到 " + (o.arrive || "") + " → " + (s.arrive || "") : "  发 " + (o.depart || "") + " → " + (s.depart || "")) }); }
+            if (l0 !== l1) items.push({ type: "leg", stopId: s.id, name: s.name, text: "到「" + s.name + "」改为 " + ((MODES[s.legIn && s.legIn.mode] || {}).label || "") + " " + ((s.legIn && s.legIn.summary) || "") });
+          });
+          old.v.stops.forEach(function (o) { if (!nm[o.id]) items.push({ type: "remove", stopId: o.id, name: o.name, text: "－ " + (o.arrive || o.depart || "") + " " + o.name }); });
+          // 票的影响：已购票覆盖的路段被删、被改
+          old.v.stops.forEach(function (o) {
+            var t = ticketFor(a, o.id); if (!t) return;
+            var s2 = nm[o.id];
+            var gone = !s2, changed = s2 && JSON.stringify([o.legIn && o.legIn.summary, o.arrive, o.depart]) !== JSON.stringify([s2.legIn && s2.legIn.summary, s2.arrive, s2.depart]);
+            if (gone || changed) out.tickets.push({ ticket: t.name, level: t.changeable === false ? "error" : "warn", message: "「" + t.name + "」覆盖的路段" + (gone ? "被删除" : "有变化") + (t.changeable === false ? "：这张票不能改签" + (t.rule ? "（" + t.rule + "）" : "") + "，需另购或放弃" : "：请确认是否需要改签") });
+          });
+          // 新出现的特急路段没有票
+          if (b.tickets && b.tickets.length) v.stops.forEach(function (s) { if (s.legIn && /特急/.test(s.legIn.summary || "") && !ticketFor(b, s.id) && !(om[s.id] && om[s.id].legIn && om[s.id].legIn.summary === s.legIn.summary)) out.tickets.push({ ticket: "", level: "warn", message: "到「" + s.name + "」的特急路段没有对应的特急券，需要另购" }); });
+          var f0 = variantFare(old.v), f1 = variantFare(v);
+          out.fareDelta += f1.fare - f0.fare; if (f1.unknown > f0.unknown || f1.unknown && items.length) out.fareUnknown = out.fareUnknown || f1.unknown > 0;
+        }
+        if (items.length) { out.variants.push({ id: v.id, name: d.label + " · " + v.name, items: items }); out.count += items.length; }
+      });
+    });
+    Object.keys(A).forEach(function (id) { var still = false; b.days.forEach(function (d) { d.variants.forEach(function (v) { if (v.id === id) still = true; }); }); if (!still) { out.variants.push({ id: id, name: A[id].v.name, items: [{ type: "remove", text: "删除方案「" + A[id].v.name + "」" }] }); out.count++; } });
+    return out;
+  }
+
+  /* ---------- 核实状态：每个时刻都要说清来源 ---------- */
+  var VERIFY = { verified: "已核实", single: "单一来源", unverified: "未核实", conflict: "有冲突" };
+  function verifyOf(x) { var st = x && x.verify && x.verify.status; return VERIFY[st] ? st : "unverified"; }
+  function verifyCounts(v) {
+    var c = { verified: 0, single: 0, unverified: 0, conflict: 0 };
+    v.stops.forEach(function (s, i) { if (s.arrive || s.depart) c[verifyOf(s)]++; if (i && s.legIn) c[verifyOf(s.legIn)]++; });
+    return c;
+  }
+
+  /* ---------- 下一步：现场模式的大字卡片与导航 ---------- */
+  function stationName(s) { return String(s.nameLocal || s.name).replace(/^(南海|JR|京阪)\s*/, "").replace(/駅.*$/, "").replace(/（.*）|\(.*\)/g, "").trim(); }
+  function navLinks(prev, s) {
+    var out = [], q = encodeURIComponent(s.nameLocal || s.name);
+    if (!prev) { out.push({ label: "Apple 地图", url: "https://maps.apple.com/?ll=" + s.lat + "," + s.lng + "&q=" + q }); out.push({ label: "Google 地图", url: "https://www.google.com/maps/search/?api=1&query=" + s.lat + "," + s.lng }); return out; }
+    var mode = s.legIn && s.legIn.mode, transit = mode === "rail" || mode === "bus" || mode === "ferry";
+    out.push({ label: "Apple 地图导航", url: "https://maps.apple.com/?saddr=" + prev.lat + "," + prev.lng + "&daddr=" + s.lat + "," + s.lng + "&dirflg=" + (mode === "walk" ? "w" : transit ? "r" : "d") });
+    out.push({ label: "Google 地图导航", url: "https://www.google.com/maps/dir/?api=1&origin=" + prev.lat + "," + prev.lng + "&destination=" + s.lat + "," + s.lng + "&travelmode=" + (mode === "walk" ? "walking" : transit ? "transit" : "driving") });
+    if (mode === "rail") out.push({ label: "Yahoo! 乘换", url: "https://transit.yahoo.co.jp/search/result?from=" + encodeURIComponent(stationName(prev)) + "&to=" + encodeURIComponent(stationName(s)) });
+    return out;
+  }
+  function nextStep(v, st) {
+    if (!st) return null;
+    var stops = v.stops, ni = st.at != null ? st.at + 1 : st.next;
+    if (ni == null || ni >= stops.length) return { done: true, text: "今天的行程走完了" };
+    var n = stops[ni], prev = stops[ni - 1], L = n.legIn || {}, ml = (MODES[L.mode] || {}).label || "前往";
+    var text;
+    if (st.at != null) text = (prev.depart ? prev.depart + " 离开" : "离开") + prev.name + "，" + ml + (L.minutes ? " " + L.minutes + " 分钟" : "") + "到" + n.name;
+    else text = ml + "中，" + (st.etaMin != null ? fmt(st.etaMin) + " 左右" : "") + "到" + n.name;
+    var phrase = n.phrase || (L.mode === "rail" || L.mode === "bus" ? "「" + stationName(n) + "に行きますか」" : L.mode === "walk" ? "「" + stationName(n) + "はどちらですか」" : "");
+    return { index: ni, text: text, detail: L.summary || "", phrase: phrase, links: navLinks(prev, n) };
+  }
+
   return {
     SCHEMA: SCHEMA, MODES: MODES, KINDS: KINDS, POI_CATS: POI_CATS, PLANNER_RULES: PLANNER_RULES,
     toMin: toMin, fmt: fmt, durText: durText, dist: dist, bearing: bearing, pathLength: pathLength, along: along, nearestOnPath: nearestOnPath,
     sunTimes: sunTimes, normalize: normalize, validate: validate, stay: stay, timeline: timeline, positionAt: positionAt, liveStatus: liveStatus,
     replan: replan, nearby: nearby, diff: diff, compactForAI: compactForAI, mergeAIRoadbook: mergeAIRoadbook, buildAIInput: buildAIInput,
-    contextBlock: contextBlock, coerceAIResult: coerceAIResult, extractJSON: extractJSON, clone: clone
+    contextBlock: contextBlock, coerceAIResult: coerceAIResult, extractJSON: extractJSON, clone: clone,
+    applyOps: applyOps, changeSet: changeSet, ticketFor: ticketFor, VERIFY: VERIFY, verifyOf: verifyOf, verifyCounts: verifyCounts,
+    stationName: stationName, navLinks: navLinks, nextStep: nextStep
   };
 });

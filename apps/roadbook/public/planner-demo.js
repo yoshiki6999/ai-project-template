@@ -31,6 +31,34 @@
       return { reply: "现在是演示模式，内置了一条「和歌山演唱会」示例路线可以完整体验。连上 Claude 后可以规划任意目的地（右上角可查看 AI 连接方式）。", proposals: [], roadbook: null, quickReplies: ["周六去和歌山看演唱会，顺便上友岛", "周日在和歌浦看演出"] };
     }
 
+    if (rb.id === "rb-kushimoto-shirahama") {
+      var kv = variant(rb, "k1a");
+      if (kv && has(/白浜.*(直接|提前)?上车|白浜上34|白浜直接/)) {
+        var back = kv.stops.filter(function (x) { return x.nameLocal === "白浜駅"; }).pop(), tanabe = kv.stops.filter(function (x) { return x.nameLocal === "紀伊田辺駅"; })[0], ten = kv.stops[kv.stops.length - 1];
+        if (back && tanabe && ten) return {
+          reply: "改成在白浜直接上黑潮 34 号（白浜发车时刻 18:19 是推算，未核实）。要注意票：早鸟特急券只覆盖纪伊田边以后，而且不能改签，所以白浜→纪伊田边这段要另买特急券，差价未核实（通常几百日元）。另一个选择是维持 18:02 普通车到纪伊田边换乘，不加钱。先给你看改动，确认后再生效。",
+          proposals: [], roadbook: null,
+          ops: [
+            { op: "remove", variant: "k1a", stop: tanabe.id },
+            { op: "update", variant: "k1a", stop: back.id, set: { depart: "18:19", tips: ["黑潮 34 号白浜发车时刻未核实，出发前查 JR 西日本时刻"], phrase: "「くろしお34号は何番線ですか」" } },
+            { op: "update", variant: "k1a", stop: ten.id, set: { legIn: { summary: "特急黑潮 34 号（白浜上车；白浜→纪伊田边需另购特急券）", minutes: 134 } } }
+          ],
+          quickReplies: ["还是坐 18:02 普通车", "我实际 14:07 才到白浜"]
+        };
+      }
+      var tm = /(\d{1,2})[:：](\d{2})/.exec(q);
+      if (kv && tm && has(/到|晚/)) {
+        var target = null; kv.stops.forEach(function (x) { if (!target && x.arrive && q.indexOf(C.stationName(x)) >= 0) target = x; });
+        if (target) {
+          var late = (+tm[1]) * 60 + (+tm[2]) - C.toMin(target.arrive);
+          if (late > 0) {
+            var rr = C.replan(kv, C.toMin(target.arrive), late), nb4 = C.clone(rb);
+            nb4.days.forEach(function (d) { d.variants = d.variants.map(function (x) { return x.id === "k1a" ? rr.variant : x; }); });
+            return { reply: "按实际 " + tm[1] + ":" + tm[2] + " 到「" + target.name + "」（晚 " + late + " 分）重排：" + (rr.conflicts.length ? rr.conflicts[0].message : rr.changes.map(function (c) { return c.message; }).join("；")) + "。18:32 的 34 号是硬约束，没有动。", proposals: [], roadbook: rr.conflicts.length ? null : nb4, quickReplies: ["采用后开始随行", "撤销"] };
+          }
+        }
+      }
+    }
     if (has(/定稿|确认|就这样|锁定/)) {
       var fin = C.clone(rb); fin.status = "final";
       return { reply: "已定稿 ✓ 路书锁定为 v1。之后在「随行」里会按这个版本跟着你走，临时变动会先给你看改动再生效。", proposals: [], roadbook: fin, quickReplies: ["开始随行", "复制文字版发给同伴"] };
@@ -40,12 +68,13 @@
       if (!a) return { reply: "当前路书里没有周六 A 方案，演示模式只会改示例路书。", proposals: [], roadbook: null, quickReplies: [] };
       if (a.stops.some(function (s) { return s.kind === "food"; })) return { reply: "周六 A 已经有午饭安排了。要不要换成别的类型？", proposals: [], roadbook: null, quickReplies: ["定稿，生成路书"] };
       var portIdx = -1; a.stops.forEach(function (s, i) { if (portIdx < 0 && s.kind === "port") portIdx = i; });
-      var port = a.stops[portIdx];
-      var food = { id: "kadaFood-lunch", name: "加太港周边海鲜食堂", nameLocal: "加太港周辺の海鮮食堂", kind: "food", lat: 34.2733, lng: 135.0742, arrive: "11:50", depart: "12:40", fixed: false, optional: true, minStay: 30, tips: ["加太以真鲷闻名，推荐鲷鱼饭", "具体店铺按当天营业情况现场确认"], tags: [], legIn: port.legIn };
-      port.legIn = { mode: "walk", summary: "步行到乘船处", minutes: 7, fare: 0, path: [] };
-      port.arrive = "12:47";
-      a.stops.splice(portIdx, 0, food);
-      return { reply: "好的，在等船的空档（11:50–12:40）加了加太海鲜午饭，吃完步行 7 分钟到码头，赶 13:00 的船刚好。原来\"港口只有杯面\"的问题也解决了。", proposals: [], roadbook: nb, quickReplies: ["定稿，生成路书", "周六推迟 1 小时出发"] };
+      var port = a.stops[portIdx], prevStop = a.stops[portIdx - 1];
+      var food = { id: "kadaFood-lunch", name: "加太港周边海鲜食堂", nameLocal: "加太港周辺の海鮮食堂", kind: "food", lat: 34.2733, lng: 135.0742, arrive: "11:50", depart: "12:40", fixed: false, optional: true, minStay: 30, tips: ["加太以真鲷闻名，推荐鲷鱼饭", "具体店铺按当天营业情况现场确认"], tags: [], legIn: port.legIn, phrase: "「おすすめの鯛料理は何ですか」" };
+      var ops = [
+        { op: "insert", variant: "d1a", after: prevStop.id, data: food },
+        { op: "update", variant: "d1a", stop: port.id, set: { arrive: "12:47", legIn: { mode: "walk", summary: "步行到乘船处", minutes: 7, fare: 0, path: [] } } }
+      ];
+      return { reply: "在等船的空档（11:50–12:40）加了加太海鲜午饭，吃完步行 7 分钟到码头，赶 13:00 的船。只动了 2 处，确认后生效。", proposals: [], roadbook: null, ops: ops, quickReplies: ["采用后开始随行", "周六推迟 1 小时出发"] };
     }
     if (has(/推迟|晚点出发|多睡|9点|九点/)) {
       var nb2 = C.clone(rb), notes = [];
