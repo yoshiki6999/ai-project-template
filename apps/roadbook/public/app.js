@@ -864,7 +864,11 @@
       const [coast, sample] = await Promise.all([fetch("data/kansai.json").then((r) => r.json()), fetch("data/sample-trip.json").then((r) => r.json())]);
       S.coast = coast; S.sample = sample; MapV.setBase(coast);
     } catch { toast("示例数据加载失败，请刷新"); return; }
-    const saved = store.get("state");
+    let saved = store.get("state");
+    try { // 会话快照：Claude 在对话里跑出的结果，发布后打开即可看到（每个快照只自动载入一次）
+      const snap = await fetch("data/session.json").then((r) => (r.ok ? r.json() : null));
+      if (snap && snap.seedId && store.get("seedId") !== snap.seedId) { saved = snap.state; store.set("seedId", snap.seedId); }
+    } catch {}
     if (saved && saved.v === 1) { S.rb = saved.rb; S.turns = saved.turns || []; S.history = saved.history || []; S.pending = saved.pending || null; S.dayVar = saved.dayVar; S.checkins = saved.checkins || {}; S.track = saved.track || []; if (Number.isFinite(saved.minute)) S.sim.minute = saved.minute; }
     else { S.rb = C.clone(S.sample); S.rb.version = 1; S.turns = seedTurns(); }
     document.querySelectorAll(".modes button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));

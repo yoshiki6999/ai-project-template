@@ -28,6 +28,7 @@ async function newPage(opts = {}) {
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  await page.route("**/data/session.json", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "null" })); // 测试不用会话快照
   await page.goto(BASE, { waitUntil: "networkidle" });
   await page.waitForSelector(".msg");
   return { ctx, page };
