@@ -43,13 +43,25 @@ if (ai && round.patch) {
   if (!prev || !prev.rb) throw new Error("没有当前路书，不能打补丁");
   ai.roadbook = applyPatch(prev.rb, round.patch);
 }
+if (ai && ai.ops && ai.ops.length) {
+  if (!prev || !prev.rb) throw new Error("没有当前路书，不能用 ops");
+  const base = prev.pending ? prev.pending.rb : prev.rb;
+  const r = core.applyOps(prev.rb, ai.ops);
+  void base;
+  if (r.errors.length) { r.errors.forEach((e) => console.log("  [op] " + e)); writeFileSync(counterPath, String(N - 1)); console.log("ABORT：有无效操作"); process.exit(2); }
+  const v = core.validate(r.rb), errs = v.issues.filter((i) => i.level === "error");
+  console.log("ops 校验：" + (errs.length ? errs.length + " 个错误" : "通过") + "；改动 " + core.changeSet(prev.rb, r.rb).count + " 处");
+  v.issues.forEach((i) => console.log("  [" + i.level + "] " + i.message));
+  core.changeSet(prev.rb, r.rb).tickets.forEach((t) => console.log("  [票] " + t.message));
+  if (errs.length && !round.force) { writeFileSync(counterPath, String(N - 1)); console.log("ABORT：校验未通过，未上屏"); process.exit(2); }
+}
 if (ai && ai.roadbook) {
   const v = core.validate(ai.roadbook);
   const errs = v.issues.filter((i) => i.level === "error");
   console.log("校验：" + (v.ok ? "通过" : errs.length + " 个错误") + "，" + v.issues.filter((i) => i.level !== "error").length + " 个提醒");
   v.issues.forEach((i) => console.log("  [" + i.level + "] " + i.code + " " + i.message));
   if (errs.length && !round.force) { writeFileSync(counterPath, String(N - 1)); console.log("ABORT：校验未通过，未上屏"); process.exit(2); }
-  ai.roadbook = core.compactForAI(ai.roadbook);
+  // 保留轨迹点：页面会用它画真实线路走向
 }
 
 // ---------- 2. 在真实网页上走一轮 ----------
@@ -91,6 +103,11 @@ async function act(a) {
   if (a.play) { if (a.speed) await page.selectOption("#selSpeed", String(a.speed)); await page.click(".clock .iconbtn"); await page.waitForTimeout(a.play * 1000); await page.click(".clock .iconbtn"); }
   if (a.late) { await page.locator(".actions button", { hasText: "我晚了" }).click(); await page.locator("#detail .seg button", { hasText: "晚 " + a.late + " 分" }).click(); }
   if (a.confirm) { await page.locator("#detail button", { hasText: "确认调整" }).click(); }
+  if (a.accept) { await page.locator("#pendingBar button", { hasText: "采用" }).click(); await page.waitForTimeout(400); }
+  if (a.discard) { await page.locator("#pendingBar button", { hasText: "放弃" }).click(); }
+  if (a.undo) { await act({ mode: "book" }); await page.locator("#bookScroll button", { hasText: "撤销到" }).first().click(); }
+  if (a.scrollTop != null) { await page.evaluate((y) => { const el = document.querySelector(".pane:not([hidden]) .scroll"); if (el) el.scrollTop = y; }, a.scrollTop); }
+  if (a.sheet) { await page.evaluate((f) => { const el = document.querySelector("#sheet"); el.style.height = (document.querySelector("#app").clientHeight * f) + "px"; }, a.sheet); await page.waitForTimeout(300); }
   if (a.click) { await page.locator("button", { hasText: a.click }).first().click(); }
   if (a.expand) { await page.click("#grab"); await page.waitForTimeout(400); }
   if (a.fit) { await page.click("#btnFit"); await page.waitForTimeout(700); }
@@ -106,7 +123,8 @@ if (round.user) {
   await page.click("#btnSend");
   await page.waitForFunction((n) => { const kids = document.querySelectorAll("#chatList > *"); const last = kids[kids.length - 1]; return document.querySelectorAll(".msg.user").length > n && !document.querySelector(".typing") && last && !last.classList.contains("user"); }, before, { timeout: 15000 });
 }
-const after = round.after || (round.user ? [{ shot: "chat" }].concat(ai && ai.roadbook ? [{ mode: "book" }, { shot: "book" }, { mode: "chat" }] : []) : []);
+const changed = ai && (ai.roadbook || (ai.ops && ai.ops.length));
+const after = round.after || (round.user ? [{ shot: "chat" }].concat(changed ? [{ mode: "book" }, { shot: "book" }, { mode: "chat" }] : []) : []);
 for (const a of after) await act(a);
 await page.waitForTimeout(600);
 
@@ -116,9 +134,10 @@ if (state) {
   const st = JSON.parse(state);
   writeFileSync(statePath, JSON.stringify(st));
   const lines = [];
+  if (st.pending) lines.push("【预览中，未采用】v" + st.pending.rb.version + "：" + st.pending.cs.count + " 处修改");
   if (st.rb) {
     const v = core.validate(st.rb);
-    lines.push(`${st.rb.title}｜${st.rb.status}｜当前方案 ${st.dayVar}｜校验 ${v.ok ? "通过" : "有错误"}，${v.issues.length} 条`);
+    lines.push(`${st.rb.title} v${st.rb.version || 1}｜${st.rb.status}｜当前方案 ${st.dayVar}｜历史 ${(st.history || []).length} 版｜校验 ${v.ok ? "通过" : "有错误"}，${v.issues.length} 条`);
     st.rb.days.forEach((d) => { lines.push(`[${d.id} ${d.label} ${d.date}]`); d.variants.forEach((vv) => { lines.push(`  ${vv.id}「${vv.name}」when:${vv.when || "-"}`); vv.stops.forEach((s, i) => lines.push(`    #${i + 1} ${s.id} ${s.arrive || "     "}→${s.depart || "     "} ${s.name}(${s.kind}) ${s.lat},${s.lng}${s.legIn ? " ← " + s.legIn.mode + " " + s.legIn.minutes + "分 " + (s.legIn.summary || "") : ""}${s.fixed ? " [固定]" : ""}${s.optional ? " [可选]" : ""}`)); }); });
     v.issues.forEach((i) => lines.push(`  ! ${i.level} ${i.message}`));
   } else lines.push("（还没有路书）");
