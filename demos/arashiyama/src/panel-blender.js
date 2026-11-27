@@ -831,6 +831,7 @@ vec3 blFog(vec3 col){
         t.lerp(olive, U.smoothstep(6, 0, ly) * 0.25);
         t.lerp(powder, U.smoothstep(0.86, 0.97, f) * 0.45);
         if (f < 0.05) t.multiplyScalar(0.78);
+        t.multiplyScalar(0.86);
         col[i * 3] = t.r; col[i * 3 + 1] = t.g; col[i * 3 + 2] = t.b;
         p.setXYZ(i, b.x + p.getX(i) + b.lean * ly, y0 + ly, b.z + p.getZ(i));
       }
@@ -856,7 +857,7 @@ vec3 blFog(vec3 col){
         }
       }
     }
-    const mat = patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0, envMapIntensity: 1.1 }), { key: 'bamboo', vHead: 'attribute float aH; attribute float aPh;', vWind: WIND_BAMBOO });
+    const mat = patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0, envMapIntensity: 0.9 }), { key: 'bamboo', vHead: 'attribute float aH; attribute float aPh;', vWind: WIND_BAMBOO });
     const mesh = new THREE.Mesh(merge(parts), mat);
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;
     scene.add(mesh);
