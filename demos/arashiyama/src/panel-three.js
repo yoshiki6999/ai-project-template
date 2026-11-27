@@ -134,9 +134,9 @@
       c *= 0.9 + 0.22 * lit;
       // sun glints: facets that mirror the sun in the sky toward the camera twinkle
       vec3 R = reflect(-V, n);
-      float g = pow(max(dot(R, uSunSky), 0.0), 900.0);
+      float g = pow(max(dot(R, uSunSky), 0.0), 1600.0);
       float tw = 0.5 + 0.5 * sin(uT * 4.0 + h21(floor(n.xz * 90.0)) * 40.0);
-      c += cGlint * g * tw * 2.0 * smoothstep(24.0, 42.0, dist);
+      c += cGlint * g * tw * 1.6 * smoothstep(30.0, 48.0, dist);
       // foam: hero-leaf ripples, boat hull + kelvin wake
       float foam = 0.0;
       for (int i = 0; i < 3; i++) { vec4 r = uRip[i]; if (r.w > 0.0) { float d = length(vW.xz - r.xy) - r.z; foam += (exp(-d * d * 260.0) + exp(-d * d * 30.0) * 0.22) * r.w; } }
@@ -898,11 +898,11 @@
   function buildHero() {
     const H_ = (D.hero = {});
     H_.mat = new THREE.MeshLambertMaterial({ color: C('#e0412c'), emissive: C('#6e1206'), side: THREE.DoubleSide, flatShading: true, transparent: true });
-    H_.mesh = new THREE.Mesh(D.leafGeo, H_.mat); H_.mesh.renderOrder = 3; reflect(H_.mesh); scene.add(H_.mesh);
+    H_.mesh = new THREE.Mesh(D.leafGeo, H_.mat); H_.mesh.renderOrder = 4; reflect(H_.mesh); scene.add(H_.mesh);
     const tex = glowTexture();
     H_.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: C('#ff7a3c'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
     H_.core = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: C('#fff1c4'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
-    H_.halo.renderOrder = H_.core.renderOrder = 6; reflect(H_.halo); reflect(H_.core); scene.add(H_.halo, H_.core);
+    H_.core.renderOrder = 2; H_.halo.renderOrder = 6; reflect(H_.halo); reflect(H_.core); scene.add(H_.halo, H_.core);
     // ribbon
     const rp = new Float32Array(TR_N * 2 * 3), kv = new Float32Array(TR_N * 2 * 2), idx = [];
     for (let k = 0; k < TR_N; k++) { kv.set([k / (TR_N - 1), -1, k / (TR_N - 1), 1], k * 4); if (k < TR_N - 1) { const a = k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
@@ -910,7 +910,7 @@
     rg.setAttribute('position', new THREE.BufferAttribute(rp, 3).setUsage(THREE.DynamicDrawUsage)); rg.setAttribute('aKV', new THREE.BufferAttribute(kv, 2)); rg.setIndex(idx);
     H_.ribMat = new THREE.ShaderMaterial({ uniforms: { cHead: { value: C('#fff7e0') }, cMid: { value: C('#ffc25a') }, cTail: { value: C('#ff4f2e') }, uFade: { value: 1 } },
       vertexShader: VS_RIBBON, fragmentShader: FS_RIBBON, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
-    H_.rib = new THREE.Mesh(rg, H_.ribMat); H_.rib.frustumCulled = false; H_.rib.renderOrder = 5; reflect(H_.rib); scene.add(H_.rib);
+    H_.rib = new THREE.Mesh(rg, H_.ribMat); H_.rib.frustumCulled = false; H_.rib.renderOrder = 1; reflect(H_.rib); scene.add(H_.rib);
     H_.rp = rp; H_.pts = []; for (let k = 0; k < TR_N; k++) H_.pts.push(V3(0, 0, 0));
     // shared additive point material (sparks, motes, lantern glows)
     D.ptsMat = new THREE.ShaderMaterial({ uniforms: { uPx: { value: 1000 } }, vertexShader: VS_PTS, fragmentShader: FS_PTS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });

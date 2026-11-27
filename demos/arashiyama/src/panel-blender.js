@@ -353,7 +353,7 @@ vec3 blFog(vec3 col){
           c += uWarm * pow(max(ndl, 0.0), 2.0) * 0.1;
           c *= mix(0.68, 1.0, ao);
           float hb = clamp((vW.y - vBase) / 7.0, 0.0, 1.0);
-          c = mix(c * vec3(0.84, 0.88, 0.97), c, smoothstep(0.0, 0.7, hb));
+          c = mix(c * vec3(0.8, 0.85, 0.96), c, smoothstep(0.0, 0.75, hb));
           float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
           c += vec3(1.0, 0.97, 0.92) * rim * 0.28 * smoothstep(0.25, 0.95, wrap);
           vec3 Hh = normalize(uSun + V);
@@ -417,12 +417,12 @@ vec3 blFog(vec3 col){
   }
   function buildMountains() {
     const far = S.ridges[0], ar = S.ridges[1];
-    const cFar = C(P.ridgeFar), cFar2 = C('#6d82a6'), cFarG = C('#7f9a9a');
+    const cFar = C('#6c82ad'), cFar2 = C('#4f6592'), cFarG = C('#6b8a8e');
     const gFar = ridgeGeo(far, -190, 190, 300, -86, 22, farY, (x, y, z, t) => {
       const n = U.fbm2(x * 0.08, y * 0.12, 3);
-      return t.copy(cFar).lerp(cFar2, U.clamp(n * 1.2 - 0.2, 0, 1) * 0.7).lerp(cFarG, U.smoothstep(18, 4, y) * 0.25);
+      return t.copy(cFar).lerp(cFar2, U.clamp(n * 1.3 - 0.25, 0, 1) * 0.8).lerp(cFarG, U.smoothstep(16, 3, y) * 0.3);
     });
-    const mFar = new THREE.Mesh(gFar, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: 0.6, side: THREE.DoubleSide }), { key: 'terrain', noFlip: true }));
+    const mFar = new THREE.Mesh(gFar, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide }), { key: 'terrainFar', noFlip: true, uniforms: { uFogDen: { value: 0.0034 } } }));
     scene.add(refl(mFar));
     const gAr = ridgeGeo(ar, -130, 130, 280, -28, 16, arashiY, (x, y, z, t) => t.copy(C(S.foliageColor(x, y))).multiplyScalar(0.42));
     const mAr = new THREE.Mesh(gAr, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide }), { key: 'terrain', noFlip: true }));
@@ -496,8 +496,11 @@ vec3 blFog(vec3 col){
       const b = S.farBank.y, col = C(tr.color);
       if (tr.kind === 'cedar') {
         for (let k = 0; k < 4; k++) { const f = k / 3; push(tr.x + (R() - 0.5) * 0.2, b + tr.h * (0.3 + 0.52 * f), tr.z, tr.w * 0.62 * (1 - 0.55 * f), 1.55, col.clone().multiplyScalar(rr(0.8, 1.05))); }
-      } else if (tr.kind === 'pine') {
-        for (let k = 0; k < 4; k++) push(tr.x + (R() - 0.5) * tr.w * 0.7, b + tr.h * (0.42 + 0.16 * k), tr.z + (R() - 0.5), tr.w * 0.42 * (1 - 0.14 * k), 0.5, col.clone().multiplyScalar(rr(0.8, 1.1)));
+      } else if (tr.kind === 'pine') { // cloud-pruned niwaki tiers
+        for (let k = 0; k < 4; k++) {
+          const tx = tr.x + (k % 2 ? 1 : -1) * tr.w * 0.18 + (R() - 0.5) * tr.w * 0.2, ty = b + tr.h * (0.42 + 0.17 * k), tz = tr.z + (R() - 0.5) * 0.6, tw = tr.w * 0.4 * (1 - 0.16 * k);
+          for (let j = -1; j <= 1; j++) push(tx + j * tw * 0.55, ty + (j ? -0.08 : 0.06) * tw, tz + (R() - 0.5) * 0.4, tw * (j ? 0.58 : 0.72), 0.52, col.clone().multiplyScalar(rr(0.78, 1.1)));
+        }
       } else {
         push(tr.x, b + tr.h * 0.6, tr.z, tr.w * 0.42, 0.9, col.clone().multiplyScalar(rr(0.9, 1.1)));
         const n = 5 + Math.floor(R() * 3);
@@ -600,8 +603,8 @@ vec3 blFog(vec3 col){
         float cosT = clamp(dot(blNW, Vw), 0.0, 1.0);
         float F = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
         vec4 rc = uTexMat * vec4(vWP, 1.0);
-        vec2 ruv = rc.xy / rc.w + blNW.xz * vec2(0.03, 0.045);
-        vec3 refl = texture2D(uRefl, ruv).rgb;
+        vec2 ruv = rc.xy / rc.w + blNW.xz * vec2(0.03, 0.05);
+        vec3 refl = texture2D(uRefl, ruv).rgb * 0.4 + texture2D(uRefl, ruv + vec2(0.0, 0.006)).rgb * 0.3 + texture2D(uRefl, ruv - vec2(0.0, 0.006)).rgb * 0.3;
         float kr = clamp(0.3 + F * 1.15, 0.0, 0.93);
         outgoingLight = mix(outgoingLight, refl * vec3(0.92, 0.97, 0.98), kr);
         vec3 rv = reflect(-Vw, blNW);
@@ -1145,7 +1148,7 @@ vec3 blFog(vec3 col){
     const o = D.leaves, h = S.heroLeaf(t);
     o.e.set(0.35 * Math.sin(t * 1.3), Math.acos(U.clamp(h.flip, -1, 1)), h.rot, 'ZYX');
     o.q.setFromEuler(o.e);
-    const flat = o.q2.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, h.rot, 'XYZ'));
+    const flat = o.q2.setFromEuler(new THREE.Euler(-Math.PI / 2 + 0.62, 0, h.rot, 'XYZ'));
     let k = 0;
     if (h.phase === 'float') k = 1; else if (h.phase === 'fly') k = U.smoothstep(1.4, 0.05, h.y) * U.smoothstep(0.85, 0.97, h.u);
     if (k > 0) o.q.slerp(flat, k);
