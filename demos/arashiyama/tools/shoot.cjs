@@ -56,7 +56,7 @@ const server = http.createServer((req, res) => {
     if (live) await page.waitForTimeout(+live); else await page.waitForTimeout(400);
     const stats = await page.evaluate(() => (window.ARASHI && window.ARASHI.stats ? window.ARASHI.stats() : null));
     const file = live ? out : out.replace(/\.png$/, `-t${t}.png`);
-    if (full) await page.screenshot({ path: file, fullPage: true }); else await page.locator('#stage').screenshot({ path: file });
+    if (full) await page.screenshot({ path: file, fullPage: true, timeout: 240000 }); else await page.locator('#stage').screenshot({ path: file, timeout: 240000 });
     console.log(`[shot] ${file}${stats ? '  frame ms (software GL, relative only): ' + JSON.stringify(stats) : ''}`);
     await page.close();
   }
