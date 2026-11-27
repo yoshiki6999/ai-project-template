@@ -339,6 +339,7 @@
       lab.style.transform = `translateX(${(b0 * W).toFixed(1)}px)`;
       lab.classList.toggle('dim', (b1 - b0) * W < 96);
       if (pn) pn.view = [b0, b1];
+      const pend = layer.querySelector('.pending'); if (pend) { pend.style.left = (b0 * 100).toFixed(3) + '%'; pend.style.right = ((1 - b1) * 100).toFixed(3) + '%'; }
     }
     stage.querySelectorAll('.divider').forEach((d, i) => {
       d.style.transform = `translateX(${(split[i] * W).toFixed(1)}px)`;

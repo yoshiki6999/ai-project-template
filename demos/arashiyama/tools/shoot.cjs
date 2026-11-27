@@ -52,7 +52,7 @@ const server = http.createServer((req, res) => {
     if (solo) q.set('solo', solo); if (split) q.set('split', split);
     const url = `http://127.0.0.1:${port}/${page_ === 'dist' ? '__dist.html' : 'index.html'}?${q}`;
     await page.goto(url, { waitUntil: 'load' });
-    try { await page.waitForFunction(() => window.ARASHI_READY === true, null, { timeout: 60000 }); } catch (e) { console.log('[harness] timed out waiting for ARASHI_READY'); }
+    try { await page.waitForFunction(() => window.ARASHI_READY === true, null, { timeout: +arg('ready', 60000) }); } catch (e) { console.log('[harness] timed out waiting for ARASHI_READY'); }
     if (live) await page.waitForTimeout(+live); else await page.waitForTimeout(400);
     const stats = await page.evaluate(() => (window.ARASHI && window.ARASHI.stats ? window.ARASHI.stats() : null));
     const file = live ? out : out.replace(/\.png$/, `-t${t}.png`);
