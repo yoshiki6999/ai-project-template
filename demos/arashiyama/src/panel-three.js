@@ -1060,11 +1060,9 @@
     }
     camera.position.set(c.pos[0], c.pos[1], c.pos[2]); camera.up.set(0, 1, 0); camera.lookAt(c.target[0], c.target[1], c.target[2]); camera.updateMatrixWorld();
     D.sky.position.copy(camera.position);
-    const _p0 = performance.now();
     updateClouds(t); updateBoat(t); updateRickshaw(t); updateBirds(t); updateLeaves(t); updateHero(t, c); updateMotes(t); updateGlows(t);
     const rip = S.ripples(t);
     for (let i = 0; i < 3; i++) { const r = rip[i]; if (r) D.ripU[i].set(r.x, r.z, r.r, r.alpha); else D.ripU[i].set(0, 0, 0, 0); }
-    const _p1 = performance.now();
     // horizontal range to draw (the page clips the canvas to this strip)
     const x0 = Math.max(0, Math.floor(v.x0) - 2), x1 = Math.min(W, Math.ceil(v.x1) + 2);
     if (x1 - x0 < 1) return;
@@ -1077,13 +1075,11 @@
     clipPlane.constant = 0.0;
     D.ptsMat.uniforms.uPx.value = rh / (2 * tanH);
     renderer.setRenderTarget(reflRT); renderer.render(scene, reflCam); renderer.setRenderTarget(null);
-    const _p2 = performance.now(); const _ri = renderer.info.render.calls + '/' + renderer.info.render.triangles;
     clipPlane.constant = 1e5;
     // 2) main pass, scissored to the visible strip
     D.ptsMat.uniforms.uPx.value = (H * PR) / (2 * tanH);
     renderer.setScissor(x0, 0, x1 - x0, H);
     renderer.render(scene, camera);
-    const _p3 = performance.now(); const pf = A._prof || (A._prof = { n: 0, u: 0, r: 0, m: 0 }); pf.n++; pf.u += _p1 - _p0; pf.r += _p2 - _p1; pf.m += _p3 - _p2; pf.refl = _ri; pf.main = renderer.info.render.calls + '/' + renderer.info.render.triangles;
   }
 
   A._threeDbg = () => ({ renderer, scene, reflCam, reflRT, camera, D, THREE });
