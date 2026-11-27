@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<!--ARTIFACT:START-->
+<title>四格岚山</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Fredoka:wght@700&family=Inter+Tight:wght@800&family=JetBrains+Mono:wght@500&family=Noto+Serif+SC:wght@700&display=swap">
+<style>
+  /* Layout: one hero stage (16:9, four vertical strips) with a quiet caption band above and controls below. */
+  :root {
+    --bg: #e9eef2;          /* morning mist over the Katsura river */
+    --surface: #f7f9fb;
+    --fg: #18202b;
+    --muted: #5b6676;
+    --line: #cdd6df;
+    --accent: #b8402c;      /* momiji red */
+    --accent-soft: rgba(184, 64, 44, 0.12);
+    --stage-edge: rgba(24, 32, 43, 0.14);
+    --font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+    --font-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10151b; --surface: #171e26; --fg: #e5eaf0; --muted: #94a0ae; --line: #2a3542;
+      --accent: #e0674b; --accent-soft: rgba(224, 103, 75, 0.16); --stage-edge: rgba(0, 0, 0, 0.5); color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10151b; --surface: #171e26; --fg: #e5eaf0; --muted: #94a0ae; --line: #2a3542;
+    --accent: #e0674b; --accent-soft: rgba(224, 103, 75, 0.16); --stage-edge: rgba(0, 0, 0, 0.5); color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 18px 28px; box-sizing: border-box;
+  }
+  .wrap { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(24px, 3.2vw, 34px); letter-spacing: 0.08em; margin: 0; text-wrap: balance; }
+  h1 .seal { display: inline-block; font-size: 0.42em; letter-spacing: 0.1em; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px; vertical-align: 0.5em; font-family: var(--font-body); font-weight: 600; }
+  .lede { margin: 0; color: var(--muted); max-width: 62ch; min-width: 0; }
+
+  #stage-wrap { display: flex; justify-content: center; }
+  #stage-wrap:fullscreen { background: #000; align-items: center; }
+  #stage {
+    position: relative; width: min(100%, calc((100vh - 230px) * 16 / 9)); min-width: min(100%, 300px); max-width: 100%;
+    aspect-ratio: 16 / 9; border-radius: clamp(10px, 1.8vw, 24px); overflow: hidden; background: #7eaedb;
+    box-shadow: 0 1px 0 var(--stage-edge), 0 18px 40px -18px var(--stage-edge); touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  }
+  #stage-wrap:fullscreen #stage { width: min(100vw, calc(100vh * 16 / 9)); border-radius: 0; }
+  .layer { position: absolute; inset: 0; }
+  .layer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: #fff; background: rgba(20, 28, 40, 0.55); font-size: 13px; }
+
+  .divider { position: absolute; top: 0; bottom: 0; left: -14px; width: 28px; cursor: ew-resize; z-index: 5; touch-action: none; outline: none; }
+  .divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: 13px; width: 2px; background: rgba(255, 255, 255, 0.78); box-shadow: 0 0 0 0.5px rgba(30, 40, 55, 0.35), 0 0 10px rgba(20, 30, 45, 0.25); }
+  .divider::after { content: ""; position: absolute; left: 7px; top: 50%; width: 14px; height: 38px; margin-top: -19px; border-radius: 8px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 2px 8px rgba(20, 30, 45, 0.3); opacity: 0; transition: opacity 0.2s; }
+  .divider:hover::after, .divider.drag::after, .divider:focus-visible::after { opacity: 1; }
+  .divider:focus-visible::before { background: var(--accent); }
+  .divider.gone { pointer-events: none; opacity: 0; }
+
+  .plabel { position: absolute; top: 0; left: 0; z-index: 6; padding: clamp(8px, 1.4vw, 16px) clamp(10px, 1.6vw, 18px); cursor: pointer; border: 0; background: none; text-align: left; display: flex; flex-direction: column; gap: 4px; transition: opacity 0.25s; color: #fff; }
+  .plabel.dim { opacity: 0; pointer-events: none; }
+  .plabel .name { font-size: clamp(13px, 1.75vw, 24px); line-height: 1.05; white-space: nowrap; }
+  .plabel .sub { font-size: clamp(9px, 0.85vw, 11.5px); line-height: 1.2; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; background: rgba(15, 22, 32, 0.38); color: rgba(255, 255, 255, 0.95); width: max-content; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .plabel:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 10px; }
+  .plabel[data-id="python"] .name { font-family: "Caveat Brush", "Bradley Hand", "Comic Sans MS", cursive; color: #2b2333; font-size: clamp(15px, 2.15vw, 30px); padding-bottom: 3px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 10' preserveAspectRatio='none'%3E%3Cpath d='M2 6 C30 2, 70 9, 118 4' stroke='%23c79a3a' stroke-width='3.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") left bottom / 100% 7px no-repeat; }
+  .plabel[data-id="motion"] .name { font-family: "Fredoka", "Arial Rounded MT Bold", "Helvetica Neue", sans-serif; font-weight: 700; color: #fff; -webkit-text-stroke: 3px #1d2635; paint-order: stroke fill; padding-bottom: 5px;
+    background: linear-gradient(#e8b931, #e8b931) left bottom / 38% 4px no-repeat; }
+  .plabel[data-id="three"] .name { font-family: var(--font-mono); font-weight: 500; color: #f4f8ff; text-shadow: 0 0 10px rgba(160, 210, 255, 0.7), 0 1px 2px rgba(0, 0, 0, 0.35); font-size: clamp(12px, 1.55vw, 21px); }
+  .plabel[data-id="blender"] .name { font-family: "Inter Tight", "Helvetica Neue", Arial, sans-serif; font-weight: 800; color: #fff; text-shadow: 0 2px 10px rgba(30, 50, 80, 0.45); letter-spacing: -0.01em; }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; justify-content: space-between; }
+  .controls .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+  .controls button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .controls button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  #btn-play { min-width: 64px; font-weight: 600; }
+  #time { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 5ch; }
+  .hint { font-size: 12.5px; color: var(--muted); }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 28px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .notes p { margin: 0; color: var(--muted); font-size: 13.5px; min-width: 0; }
+  .notes b { color: var(--fg); font-weight: 600; }
+  @media (max-width: 640px) { body { padding-block: 12px 20px; } .hint { width: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .divider::after, .plabel { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>四格岚山<span class="seal">京都 · 嵐山</span></h1>
+    <p class="lede">渡月桥（渡月橋）上人力车跑过，屋形船顺着桂川漂下，一片红叶从左上角的枫枝落下，穿过四种画风，最后落在水面。同一个场景，四种代码画法同时上演。</p>
+  </header>
+
+  <div id="stage-wrap">
+    <div id="stage" role="img" aria-label="岚山秋景动画：渡月桥横跨桂川，背后是红叶覆盖的岚山，画面分成四种画风">
+      <div class="layer" data-id="python"></div>
+      <div class="layer" data-id="motion"></div>
+      <div class="layer" data-id="three"></div>
+      <div class="layer" data-id="blender"></div>
+      <button class="plabel" data-id="python" type="button" title="单独看这一格"><span class="name">Python 风</span><span class="sub">颗粒笔触 · Canvas 2D</span></button>
+      <button class="plabel" data-id="motion" type="button" title="单独看这一格"><span class="name">Motion Canvas 风</span><span class="sub">矢量动效 · Canvas 2D</span></button>
+      <button class="plabel" data-id="three" type="button" title="单独看这一格"><span class="name">Three.js</span><span class="sub">低多边形 · 实时 3D</span></button>
+      <button class="plabel" data-id="blender" type="button" title="单独看这一格"><span class="name">Blender 风</span><span class="sub">柔光渲染 · Three.js 实时 3D</span></button>
+      <div class="divider" role="separator" aria-orientation="vertical" aria-label="第 1 条分隔线" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
+      <div class="divider" role="separator" aria-orientation="vertical" aria-label="第 2 条分隔线" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
+      <div class="divider" role="separator" aria-orientation="vertical" aria-label="第 3 条分隔线" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <button id="btn-play" type="button" aria-pressed="true">暂停</button>
+      <span id="time">00.0 s</span>
+      <button data-solo="python" type="button" aria-pressed="false">Python 风</button>
+      <button data-solo="motion" type="button" aria-pressed="false">Motion Canvas 风</button>
+      <button data-solo="three" type="button" aria-pressed="false">Three.js</button>
+      <button data-solo="blender" type="button" aria-pressed="false">Blender 风</button>
+      <button id="btn-reset" type="button">四格对比</button>
+      <button id="btn-full" type="button">全屏</button>
+    </div>
+    <span class="hint">拖动白色分隔线调整每格宽度 · 点画格左上角的名字单独看 · 空格键暂停</span>
+  </div>
+
+  <section class="notes" aria-label="制作说明">
+    <p><b>同一个世界，四种画法。</b>四格共用一份场景描述：镜头位置、渡月桥的桥墩、岚山山脊、红叶的飞行路线。所以分隔线两边的山和桥能对上。</p>
+    <p><b>前两格是二维画布。</b>“Python 风”模仿用 Python 逐像素生成的颗粒手绘质感；“Motion Canvas 风”模仿矢量动画工具的粗描边和缓动曲线。</p>
+    <p><b>后两格是真实的 3D。</b>第三格用 Three.js 做低多边形和粒子光轨；第四格同样是 Three.js，用柔和光照模仿 Blender 渲染的质感。全片没有用任何图片或视频素材。</p>
+  </section>
+</div>
+
+<script src="src/core.js"></script>
+<script src="src/panel-python.js"></script>
+<script src="src/panel-motion.js"></script>
+<script src="src/panel-three.js"></script>
+<script src="src/panel-blender.js"></script>
+<!--ARTIFACT:END-->
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "arashiyama-four-styles",
+  "private": true,
+  "version": "1.0.0",
+  "description": "四格岚山：同一个岚山场景用四种代码画风同时渲染（Canvas 2D ×2 + Three.js ×2）",
+  "scripts": {
+    "build": "node tools/build.cjs",
+    "shoot": "node tools/shoot.cjs",
+    "verify": "node tools/build.cjs && node tools/shoot.cjs --page=dist --times=3,10,17 --out=/tmp/arashi-verify.png"
+  },
+  "devDependencies": {
+    "three": "0.160.0"
+  }
+}
