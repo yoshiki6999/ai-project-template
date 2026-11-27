@@ -178,13 +178,25 @@
       #include <colorspace_fragment>
     }`;
   const VS_RIBBON = `attribute vec2 aKV; varying vec2 vKV; void main(){ vKV = aKV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  const VS_FS = `varying vec2 vUv; void main(){ vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+  const FS_BLUR = `uniform sampler2D tSrc; uniform vec2 uDir; varying vec2 vUv;
+    void main(){
+      vec3 c = texture2D(tSrc, vUv).rgb * 0.2270270270;
+      c += (texture2D(tSrc, vUv + uDir * 1.3846153846).rgb + texture2D(tSrc, vUv - uDir * 1.3846153846).rgb) * 0.3162162162;
+      c += (texture2D(tSrc, vUv + uDir * 3.2307692308).rgb + texture2D(tSrc, vUv - uDir * 3.2307692308).rgb) * 0.0702702703;
+      gl_FragColor = vec4(c, 1.0);
+    }`;
+  const FS_COMP = `uniform sampler2D tA; uniform sampler2D tC; uniform float uK; varying vec2 vUv;
+    void main(){ vec3 c = (texture2D(tA, vUv).rgb * 0.75 + texture2D(tC, vUv).rgb * 1.25) * uK; gl_FragColor = vec4(c, 1.0);
+      #include <colorspace_fragment>
+    }`;
   const FS_RIBBON = `uniform vec3 cHead; uniform vec3 cMid; uniform vec3 cTail; uniform float uFade; varying vec2 vKV;
     void main(){
       float k = vKV.x, v = vKV.y;
       float core = exp(-v * v * 22.0), halo = pow(max(1.0 - abs(v), 0.0), 2.2);
-      vec3 col = mix(cHead, cMid, smoothstep(0.0, 0.35, k)); col = mix(col, cTail, smoothstep(0.3, 0.95, k));
-      float a = pow(1.0 - k, 1.4) * uFade;
-      gl_FragColor = vec4(col * (core * 1.3 + halo * 0.6) * a, 1.0);
+      vec3 col = mix(cHead, cMid, smoothstep(0.02, 0.24, k)); col = mix(col, cTail, smoothstep(0.26, 0.88, k));
+      float a = pow(1.0 - k, 1.4) * (0.35 + 0.65 * smoothstep(0.0, 0.08, k)) * uFade;
+      gl_FragColor = vec4(col * (core * 1.15 + halo * 0.45) * a, 1.0);
       #include <colorspace_fragment>
     }`;
 
@@ -324,8 +336,8 @@
   }
   function buildMountains() {
     const far = S.ridges.find((r) => r.id === 'far'), ara = S.ridges.find((r) => r.id === 'arashiyama');
-    const cF = C('#7088b4'), cFH = C('#aebfd8'), tmp = new THREE.Color();
-    const matFar = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: C('#2f4f86'), emissiveIntensity: 0.3 });
+    const cF = C('#8399c4'), cFH = C('#bfcde3'), tmp = new THREE.Color();
+    const matFar = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: C('#3b5a92'), emissiveIntensity: 0.26 });
     buildRidge(far, { mat: matFar, x0: -215, x1: 215, dx: 3.2, rows: 8, yBase: 0, pow: 0.9, k: 0.9, bump: 5, bf: 0.05, jy: 0.7,
       color: (a, b, c, t) => tmp.copy(cF).lerp(cFH, U.smoothstep(0.15, 1, t) * 0.75).multiplyScalar(0.94 + rnd() * 0.12).clone() });
     const sh = C(P.mapleCrimson);
@@ -802,10 +814,11 @@
     BT.lanterns = [];
     for (const s of [-1, 1]) for (let k = 0; k < 6; k++) {
       const m = new THREE.Mesh(lanGeo, lanMat); m.position.set(x0 + 0.25 + k * ((x1 - x0 - 0.5) / 5), 1.78, s * 1.36); g.add(m);
+      if (s > 0) m.layers.enable(2);
       BT.lanterns.push({ m, base: m.position.clone(), big: false, ph: k * 0.7 + s });
     }
     const big = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.36, 8), new THREE.MeshBasicMaterial({ color: C(P.boatLantern) }));
-    big.position.set(3.0, 1.42, 1.02); g.add(big); BT.lanterns.push({ m: big, base: big.position.clone(), big: true, ph: 0 });
+    big.position.set(3.0, 1.42, 1.02); big.layers.enable(2); g.add(big); BT.lanterns.push({ m: big, base: big.position.clone(), big: true, ph: 0 });
     reflect(g); scene.add(g); BT.group = g;
   }
   function updateBoat(t) {
@@ -898,7 +911,7 @@
   function buildHero() {
     const H_ = (D.hero = {});
     H_.mat = new THREE.MeshLambertMaterial({ color: C('#e0412c'), emissive: C('#6e1206'), side: THREE.DoubleSide, flatShading: true, transparent: true });
-    H_.mesh = new THREE.Mesh(D.leafGeo, H_.mat); H_.mesh.renderOrder = 4; reflect(H_.mesh); scene.add(H_.mesh);
+    H_.mesh = new THREE.Mesh(D.leafGeo, H_.mat); H_.mesh.renderOrder = 4; reflect(H_.mesh); H_.mesh.layers.enable(2); scene.add(H_.mesh);
     const tex = glowTexture();
     H_.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: C('#ff7a3c'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
     H_.core = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: C('#fff1c4'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
@@ -920,7 +933,7 @@
       g.setAttribute('position', at('p', 3)); g.setAttribute('aColor', at('c', 3)); g.setAttribute('aSize', at('s', 1)); g.setAttribute('aAlpha', at('a', 1)); g.setAttribute('aStar', at('st', 1));
       const p = new THREE.Points(g, D.ptsMat); p.frustumCulled = false; p.renderOrder = 7; scene.add(p); return p;
     };
-    H_.spk = mkPts(SP_SLOTS * SP_PER);
+    H_.spk = mkPts(SP_SLOTS * SP_PER); H_.spk.layers.enable(2);
     D.motes = mkPts(MOTES);
     D.moteSeeds = [];
     for (let i = 0; i < MOTES; i++) { const z = -8 + Math.pow(rnd(), 0.8) * 40, half = (46 - z) * 0.62 + 3; D.moteSeeds.push({ x0: (rnd() * 2 - 1) * half, half, y0: 0.6 + rnd() * (z > 20 ? 9 : 13), z, ph: rnd() * 6.28, sz: 0.035 + rnd() * 0.06, star: rnd() < 0.18 ? 0.5 : 0, warm: rnd() }); }
@@ -952,7 +965,7 @@
     H_.mat.opacity = h.alpha; H_.mesh.visible = h.alpha > 0.01;
     const fly = h.phase === 'fly' ? Math.sin(Math.min(1, h.u * 6) * Math.PI / 2) : 0;
     const glowK = (h.phase === 'hang' ? 0.35 + 0.1 * Math.sin(t * 3) : h.phase === 'fly' ? 0.55 + 0.45 * fly : 0.6 * (1 - h.ripple)) * h.alpha;
-    H_.halo.position.set(h.x, h.y + 0.05, h.z); H_.halo.scale.setScalar(3.0 + 0.4 * Math.sin(t * 5)); H_.halo.material.opacity = 0.6 * glowK;
+    H_.halo.position.set(h.x, h.y + 0.05, h.z); H_.halo.scale.setScalar(1.7 + 0.25 * Math.sin(t * 5)); H_.halo.material.opacity = 0.4 * glowK;
     H_.core.position.copy(H_.halo.position); H_.core.scale.setScalar(0.75); H_.core.material.opacity = 0.5 * glowK;
     // ribbon from past positions: τ = t − k·dt, clamped to this loop's flight window
     const fade = p < HE.hold ? 0 : 1 - U.smoothstep(HE.fly, HE.fly + 0.075, p);
@@ -1019,7 +1032,7 @@
     _m = new THREE.Matrix4(); _q = new THREE.Quaternion(); _e = new THREE.Euler(); _v = new THREE.Vector3(); _s = new THREE.Vector3(); _c = new THREE.Color();
     renderer = new THREE.WebGLRenderer({ canvas: api.canvas, antialias: true, powerPreference: 'high-performance', stencil: false });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setClearColor(C(P.skyHorizon), 1);
+    D.clear = C(P.skyHorizon); renderer.setClearColor(D.clear, 1);
     renderer.setScissorTest(true);
     clipPlane = new THREE.Plane(V3(0, 1, 0), 1e5);
     renderer.clippingPlanes = [clipPlane];
@@ -1038,7 +1051,7 @@
     D.cGold = C('#ffc760'); D.cWhite = C('#fffaf0'); D.cEmber = C('#ff6a3a'); D.cMote = C('#fff4d8'); D.cLamp = C('#ffae4a');
     buildLights(); buildSky(); buildClouds(); buildMountains(); buildMist(); buildFarBank(); buildTrees(); buildHouses();
     buildBridge(); buildWater(); buildNearBank(); buildRocks(); buildLantern(); buildGrass(); buildBamboo(); buildMaple();
-    buildRickshaw(); buildBoat(); buildBirds(); buildLeaves(); buildHero();
+    buildRickshaw(); buildBoat(); buildBirds(); buildLeaves(); buildHero(); buildBloom();
   }
 
   function resize(w, h, dpr) {
@@ -1046,6 +1059,8 @@
     renderer.setPixelRatio(PR); renderer.setSize(W, H, false);
     camera.aspect = reflCam.aspect = W / H; camera.updateProjectionMatrix(); reflCam.updateProjectionMatrix();
     reflRT.setSize(Math.max(2, Math.round(W * PR * 0.5)), Math.max(2, Math.round(H * PR * 0.5)));
+    const B = D.bloom, qw = Math.max(2, Math.round(W * PR / 4)), qh = Math.max(2, Math.round(H * PR / 4));
+    B.a.setSize(qw, qh); B.b.setSize(qw, qh); B.c.setSize(Math.max(2, qw >> 1), Math.max(2, qh >> 1)); B.d.setSize(Math.max(2, qw >> 1), Math.max(2, qh >> 1));
     lastKey = '';
   }
 
@@ -1080,8 +1095,28 @@
     D.ptsMat.uniforms.uPx.value = (H * PR) / (2 * tanH);
     renderer.setScissor(x0, 0, x1 - x0, H);
     renderer.render(scene, camera);
+    // 3) selective bloom: glow sources (layer 2) at quarter res → separable blur ×2 scales → added onto the strip
+    const B = D.bloom, fx0 = x0 / W - 0.06, fx1 = x1 / W + 0.06;
+    const sc = (rt) => { rt.scissor.set(Math.max(0, Math.floor(fx0 * rt.width)), 0, Math.min(rt.width, Math.ceil(fx1 * rt.width)) - Math.max(0, Math.floor(fx0 * rt.width)), rt.height); rt.scissorTest = true; };
+    B.cam.copy(camera); B.cam.layers.set(2);
+    sc(B.a); D.ptsMat.uniforms.uPx.value = B.a.height / (2 * tanH);
+    renderer.setClearColor(0x000000, 1);
+    renderer.setRenderTarget(B.a); renderer.render(scene, B.cam);
+    const pass = (src, dst, dx, dy) => { sc(dst); B.quad.material = B.blurMat; B.blurMat.uniforms.tSrc.value = src.texture; B.blurMat.uniforms.uDir.value.set(dx / src.width, dy / src.height); renderer.setRenderTarget(dst); renderer.render(B.scene, B.ortho); };
+    pass(B.a, B.b, 1, 0); pass(B.b, B.a, 0, 1); pass(B.a, B.d, 2, 0); pass(B.d, B.c, 0, 1.5);
+    renderer.setRenderTarget(null); renderer.setClearColor(D.clear, 1);
+    B.quad.material = B.compMat; renderer.autoClear = false; renderer.render(B.scene, B.ortho); renderer.autoClear = true;
+  }
+  function buildBloom() {
+    const B = (D.bloom = {}), mk = (depth) => new THREE.WebGLRenderTarget(4, 4, { depthBuffer: depth, stencilBuffer: false });
+    B.a = mk(true); B.b = mk(false); B.c = mk(false); B.d = mk(false);
+    B.cam = new THREE.PerspectiveCamera(); B.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const tri = new THREE.BufferGeometry(); tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+    B.blurMat = new THREE.ShaderMaterial({ uniforms: { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } }, vertexShader: VS_FS, fragmentShader: FS_BLUR, depthTest: false, depthWrite: false });
+    B.compMat = new THREE.ShaderMaterial({ uniforms: { tA: { value: B.a.texture }, tC: { value: B.c.texture }, uK: { value: 0.6 } }, vertexShader: VS_FS, fragmentShader: FS_COMP, depthTest: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending });
+    B.quad = new THREE.Mesh(tri, B.blurMat); B.quad.frustumCulled = false;
+    B.scene = new THREE.Scene(); B.scene.add(B.quad);
   }
 
-  A._threeDbg = () => ({ renderer, scene, reflCam, reflRT, camera, D, THREE });
   A.registerPanel({ id: 'three', needsThree: true, init, resize, frame });
 })();

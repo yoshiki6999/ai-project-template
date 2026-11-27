@@ -154,7 +154,9 @@ vec3 blFog(vec3 col){
     mat.customProgramCacheKey = () => 'arashi-blender-' + (o.key || 'base');
     return mat;
   }
-  const P_AO = { vHead: 'varying float vBlAO;', vMain: 'vBlAO = 0.5 + 0.5 * smoothstep(-0.85, 0.75, normal.y);', fHead: 'varying float vBlAO;', fColor: 'diffuseColor.rgb *= vBlAO;' };
+  const P_AO = { vHead: 'varying float vBlAO;', vMain: 'vBlAO = 0.5 + 0.5 * smoothstep(-0.85, 0.75, normal.y);', fHead: 'varying float vBlAO;', fColor: 'diffuseColor.rgb *= vBlAO;',
+    // soft translucent rim, a cheap stand-in for subsurface scattering in the canopy
+    fOut: 'outgoingLight += diffuseColor.rgb * pow(1.0 - saturate(dot(geometryNormal, geometryViewDir)), 3.0) * 0.45;' };
   const WIND_G = 'float g = sin(uTime * 1.7 + ip.x * 0.42 + ip.z * 0.6) * 0.55 + sin(uTime * 2.9 + ip.x * 1.3 - ip.z * 0.9) * 0.22 + sin(uTime * 0.55 + ip.x * 0.11) * 0.35;';
   const WIND_GRASS = `{ vec3 ip = vec3(instanceMatrix[3]); float bh = length(instanceMatrix[1].xyz); float tt = position.y * position.y; ${WIND_G}
     bl_wp.x += g * tt * 0.2 * bh; bl_wp.z += g * tt * 0.05 * bh; bl_wp.y -= abs(g) * tt * 0.04 * bh; }`;
@@ -207,6 +209,7 @@ vec3 blFog(vec3 col){
     buildNearBank();
     buildRocks();
     buildLantern();
+    buildContactAO();
     buildBamboo();
     buildMaple();
     buildGrass();
@@ -312,7 +315,7 @@ vec3 blFog(vec3 col){
       c._range = [start, uni.length - start];
     });
     const n = inst.length;
-    const geo = new THREE.SphereGeometry(1, 30, 20);
+    const geo = new THREE.SphereGeometry(1, 26, 17);
     const aRange = new Float32Array(n * 2), aBase = new Float32Array(n);
     inst.forEach((o, i) => { const c = S.clouds[o.ci]; aRange[i * 2] = c._range[0]; aRange[i * 2 + 1] = c._range[1]; aBase[i] = o.base; });
     geo.setAttribute('aRange', new THREE.InstancedBufferAttribute(aRange, 2));
@@ -417,12 +420,12 @@ vec3 blFog(vec3 col){
   }
   function buildMountains() {
     const far = S.ridges[0], ar = S.ridges[1];
-    const cFar = C('#6c82ad'), cFar2 = C('#4f6592'), cFarG = C('#6b8a8e');
+    const cFar = C('#6479aa'), cFar2 = C('#4c5f91'), cFarG = C('#5f7f88');
     const gFar = ridgeGeo(far, -190, 190, 300, -86, 22, farY, (x, y, z, t) => {
       const n = U.fbm2(x * 0.08, y * 0.12, 3);
       return t.copy(cFar).lerp(cFar2, U.clamp(n * 1.3 - 0.25, 0, 1) * 0.8).lerp(cFarG, U.smoothstep(16, 3, y) * 0.3);
     });
-    const mFar = new THREE.Mesh(gFar, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide }), { key: 'terrainFar', noFlip: true, uniforms: { uFogDen: { value: 0.0034 } } }));
+    const mFar = new THREE.Mesh(gFar, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide }), { key: 'terrainFar', noFlip: true, uniforms: { uFogDen: { value: 0.0029 } } }));
     scene.add(refl(mFar));
     const gAr = ridgeGeo(ar, -130, 130, 280, -28, 16, arashiY, (x, y, z, t) => t.copy(C(S.foliageColor(x, y))).multiplyScalar(0.42));
     const mAr = new THREE.Mesh(gAr, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide }), { key: 'terrain', noFlip: true }));
@@ -441,7 +444,7 @@ vec3 blFog(vec3 col){
           float y = (vW.y - ${m.y.toFixed(2)}) / ${m.thickness.toFixed(2)};
           float band = exp(-y * y * 3.2);
           float wisp = n(vec2(vW.x * 0.03 + uTime * 0.04, vW.y * 0.18)) * 0.6 + n(vec2(vW.x * 0.09 - uTime * 0.06, vW.y * 0.4 + 5.0)) * 0.4;
-          float a = band * smoothstep(0.2, 0.9, wisp) * 0.42;
+          float a = band * smoothstep(0.25, 0.9, wisp) * 0.32;
           gl_FragColor = vec4(uCol, a);
           #include <colorspace_fragment>
         }`,
@@ -467,6 +470,21 @@ vec3 blFog(vec3 col){
     scene.add(refl(mesh));
   }
 
+  // icosphere with shared vertices (42 verts at detail 1) — cheaper for thousands of instances
+  function indexedIco(detail) {
+    const src = new THREE.IcosahedronGeometry(1, detail), p = src.attributes.position, map = new Map(), pos = [], idx = [];
+    for (let i = 0; i < p.count; i++) {
+      const key = `${Math.round(p.getX(i) * 1e4)},${Math.round(p.getY(i) * 1e4)},${Math.round(p.getZ(i) * 1e4)}`;
+      let k = map.get(key);
+      if (k === undefined) { k = pos.length / 3; map.set(key, k); pos.push(p.getX(i), p.getY(i), p.getZ(i)); }
+      idx.push(k);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.slice(), 3));
+    g.setIndex(idx);
+    return g;
+  }
   function buildFoliage() {
     const items = [], ar = S.ridges[1];
     const push = (x, y, z, r, sy, color) => items.push({ x, y, z, r, sy, color });
@@ -508,7 +526,7 @@ vec3 blFog(vec3 col){
       }
       D.trunks.push(tr);
     }
-    const geo = new THREE.IcosahedronGeometry(1, 1);
+    const geo = indexedIco(1);
     const mat = patch(new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0, envMapIntensity: 0.7 }), Object.assign({ key: 'foliage' }, P_AO));
     const mesh = new THREE.InstancedMesh(geo, mat, items.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
@@ -550,7 +568,7 @@ vec3 blFog(vec3 col){
     const rip = [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()];
     const uni = {
       uRefl: { value: rt.texture }, uTexMat: { value: D.texMat }, uRip: { value: rip }, uBoat: { value: new THREE.Vector4() },
-      uShallow: { value: C('#4f8a86') }, uDeep: { value: C(P.waterDeep) }, uFoam: { value: C(P.foam) }, uSunSky: { value: D.sunSky },
+      uShallow: { value: C('#3f837c') }, uDeep: { value: C('#1f4d5a') }, uFoam: { value: C(P.foam) }, uSunSky: { value: D.sunSky },
     };
     const mat = patch(new THREE.MeshStandardMaterial({ color: C(P.water), roughness: 0.14, metalness: 0, envMapIntensity: 0 }), {
       key: 'water', uniforms: uni,
@@ -735,7 +753,7 @@ vec3 blFog(vec3 col){
     const geo = merge(parts.map((g) => prep(g, null, (x, yy, z, nx, ny, nz, t) => {
       const n = U.fbm2(x * 7 + z * 3, yy * 7, 3);
       t.copy(stone).lerp(dark, 0.55 * n).multiplyScalar(0.85 + 0.2 * U.hash2(Math.floor(x * 30), Math.floor(yy * 30)));
-      t.lerp(moss, U.smoothstep(0.45, 0.9, ny + (n - 0.5) * 0.5) * 0.75);
+      t.lerp(moss, U.smoothstep(0.55, 0.95, ny + (n - 0.5) * 0.6) * U.smoothstep(0.3, 0.65, U.noise2(x * 9 + 1.7, z * 9 + yy * 4)) * 0.8);
       return t.multiplyScalar(U.lerp(0.75, 1, U.smoothstep(0.4, 1.0, yy)));
     })));
     const mesh = new THREE.Mesh(geo, patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, envMapIntensity: 0.9 }), { key: 'plain' }));
@@ -745,6 +763,25 @@ vec3 blFog(vec3 col){
     core.position.set(cx, fbY + 0.18 * k, cz);
     scene.add(core);
     scene.add(glow(cx, fbY + 0.18 * k, cz + 0.3, 0.9, '#ffb760', 0.35));
+  }
+
+  // soft contact shadows (ambient occlusion) where things meet the ground
+  function buildContactAO() {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,0.85)'); gr.addColorStop(0.45, 'rgba(0,0,0,0.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(cv);
+    const spots = [];
+    for (const r of S.rocks) spots.push([r.x, r.z, r.r * 1.9, r.r * 1.5]);
+    spots.push([S.lantern.x, S.lantern.z, 1.2, 1.1]);
+    for (const b of S.bamboo) spots.push([b.x, b.z, 0.6, 0.6]);
+    const geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: C('#14200f'), transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const mesh = new THREE.InstancedMesh(geo, mat, spots.length), m = new THREE.Matrix4(), q = new THREE.Quaternion();
+    spots.forEach(([x, z, sx, sz], i) => { m.compose(V3(x, bankY(x, z) + 0.02, z), q, V3(sx * 2, 1, sz * 2)); mesh.setMatrixAt(i, m); });
+    mesh.frustumCulled = false; mesh.renderOrder = 1;
+    scene.add(mesh);
   }
 
   let glowTex = null;
@@ -800,15 +837,15 @@ vec3 blFog(vec3 col){
         const ly = n * b.nodeGap;
         const rg = new THREE.TorusGeometry(b.r * (1 - 0.18 * ly / Ht) * 1.01, b.r * 0.11, 4, 14); rg.rotateX(Math.PI / 2);
         parts.push(prep(rg, mtx(b.x + b.lean * ly, y0 + ly, b.z), cM.clone().lerp(olive, 0.5).multiplyScalar(0.85), { aH: ly, aPh: b.seed }));
-        if (ly > 3.6 && ly < 16 && R() < 0.92) {
-          const az = R() * U.TAU, len = rr(0.6, 1.5), el = rr(0.75, 1.15);
+        if (ly > 4.8 && ly < 16 && R() < 0.72) {
+          const az = R() * U.TAU, len = rr(0.6, 1.4), el = rr(0.75, 1.15);
           const dir = V3(Math.cos(az) * Math.sin(el), Math.cos(el), Math.sin(az) * Math.sin(el));
           const a = [b.x + b.lean * ly, y0 + ly, b.z], tip = [a[0] + dir.x * len, a[1] + dir.y * len, a[2] + dir.z * len];
           parts.push(prep(limb(a, tip, 0.016, C(P.bambooDark), true), null, null, { aH: ly, aPh: b.seed }));
-          const nl = 7 + Math.floor(R() * 5);
+          const nl = 6 + Math.floor(R() * 4);
           for (let j = 0; j < nl; j++) {
             const f = j / nl;
-            leaves.push({ p: [U.lerp(a[0], tip[0], 0.55 + 0.45 * f), U.lerp(a[1], tip[1], 0.55 + 0.45 * f), U.lerp(a[2], tip[2], 0.55 + 0.45 * f)], yaw: az + rr(-1.1, 1.1), pitch: rr(-0.5, 0.15), roll: rr(-0.6, 0.6), s: rr(0.38, 0.62), h: ly + f * len * dir.y, ph: b.seed, c: C(P.bamboo).lerp(C(P.bambooDark), R() * 0.6).lerp(C('#c9b85a'), R() < 0.12 ? 0.6 : 0) });
+            leaves.push({ p: [U.lerp(a[0], tip[0], 0.55 + 0.45 * f), U.lerp(a[1], tip[1], 0.55 + 0.45 * f), U.lerp(a[2], tip[2], 0.55 + 0.45 * f)], yaw: az + rr(-1.1, 1.1), pitch: rr(-0.5, 0.15), roll: rr(-0.6, 0.6), s: rr(0.34, 0.54), h: ly + f * len * dir.y, ph: b.seed, c: C(P.bamboo).lerp(C(P.bambooDark), R() * 0.6).lerp(C('#c9b85a'), R() < 0.12 ? 0.6 : 0) });
           }
         }
       }
@@ -918,7 +955,7 @@ vec3 blFog(vec3 col){
   }
   function buildGrass() {
     const blades = [];
-    const greens = [P.grass, P.grassDark, P.moss, P.grass, '#5f8a3f', '#86a856'];
+    const greens = [P.grass, P.grassDark, P.moss, P.grass, '#5f8a3f', '#86a856', '#93b85c', '#7aa64a'];
     for (let i = 0; i < 7600; i++) {
       const x = rr(-18, 18), z = 25.75 + Math.pow(R(), 1.25) * 7.2;
       const patchK = U.fbm2(x * 0.32 + 5, z * 0.5, 3);
@@ -949,7 +986,7 @@ vec3 blFog(vec3 col){
       }
     }
     const geo = bladeGeo();
-    const mat = patch(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { key: 'grass', vHead: 'varying float vBlT;', vMain: 'vBlT = position.y;', fHead: 'varying float vBlT;', fColor: 'diffuseColor.rgb *= mix(0.36, 1.15, vBlT);', vWind: WIND_GRASS, noFlip: true });
+    const mat = patch(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { key: 'grass', vHead: 'varying float vBlT;', vMain: 'vBlT = position.y;', fHead: 'varying float vBlT;', fColor: 'diffuseColor.rgb *= mix(0.42, 1.3, vBlT * vBlT * (3.0 - 2.0 * vBlT));', vWind: WIND_GRASS, noFlip: true });
     const mesh = new THREE.InstancedMesh(geo, mat, blades.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
     blades.forEach((o, i) => { e.set(o.tilt, o.yaw, 0, 'YXZ'); q.setFromEuler(e); m.compose(V3(o.x, bankY(o.x, o.z) - 0.03, o.z), q, V3(o.w, o.h, o.h * 0.9)); mesh.setMatrixAt(i, m); mesh.setColorAt(i, o.c); });
@@ -1078,10 +1115,11 @@ vec3 blFog(vec3 col){
     // chōchin lanterns along the eaves
     const lan = [], glows = [];
     for (const x of [-1.75, -0.6, 0.55, 1.7]) for (const z of [1.18, -1.18]) {
-      lan.push(sph(x, 1.43, z, 1, C(P.boatLantern), 0.11, 0.15, 0.11, 12));
-      if (z > 0) { const s = glow(x, 1.43, z + 0.05, 0.7, '#ffae4a', 0.55); g.add(s); glows.push(s); }
+      lan.push(sph(x, 1.43, z, 1, C('#e8452a'), 0.11, 0.15, 0.11, 12), bx(x, 1.43 + 0.15, z, 0.1, 0.03, 0.1, C('#1d1a18')), bx(x, 1.43 - 0.15, z, 0.1, 0.03, 0.1, C('#1d1a18')));
+      if (z > 0) { const s = glow(x, 1.43, z + 0.05, 0.75, '#ff8a3a', 0.6); g.add(s); glows.push(s); }
     }
-    const lanMesh = new THREE.Mesh(merge(lan), stdMat('boat', { roughness: 0.5, emissive: C('#ff8a2a'), emissiveIntensity: 1.6 }));
+    const lanMesh = new THREE.Mesh(merge(lan), patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, emissive: C('#ff4a14'), emissiveIntensity: 1.1 }), { key: 'lantern',
+      fColor: 'totalEmissiveRadiance *= smoothstep(0.08, 0.3, diffuseColor.r);' }));
     g.add(lanMesh);
     scene.add(refl(g));
     D.boat = { g, poleG };
