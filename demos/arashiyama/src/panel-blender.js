@@ -301,14 +301,20 @@ vec3 blFog(vec3 col){
       const start = uni.length, nP = c.puffs.length;
       const base = c.y - c.size * 0.1;
       c.puffs.forEach((p, k) => {
-        const flat = k >= nP - 4, dz = (R() - 0.5) * c.size * 0.25;
+        const flat = k >= nP - 4, dz = (R() - 0.5) * c.size * (flat ? 0.2 : 0.45);
         uni.push({ ci, dx: p.dx, dy: p.dy, dz, r: p.r });
         inst.push({ ci, dx: p.dx, dy: p.dy, dz, r: p.r, sy: flat ? 0.7 : 0.94, base });
-        if (!flat) { // detail puffs on the upper rim give the cauliflower look
-          const n = 2 + Math.floor(R() * 3);
+        if (!flat) {
+          // billows on the upper rim give the cauliflower look …
+          const n = 3 + Math.floor(R() * 3);
           for (let j = 0; j < n; j++) {
-            const th = rr(-1.25, 1.25), rad = p.r * rr(0.62, 0.82);
-            inst.push({ ci, dx: p.dx + Math.sin(th) * rad, dy: p.dy + Math.cos(th) * rad * 0.85, dz: dz + rr(-0.1, 0.35) * p.r, r: p.r * rr(0.3, 0.48), sy: 0.95, base });
+            const th = rr(-1.35, 1.35), rad = p.r * rr(0.6, 0.84), fz = rr(-0.2, 0.7);
+            inst.push({ ci, dx: p.dx + Math.sin(th) * rad, dy: p.dy + Math.cos(th) * rad * 0.85, dz: dz + fz * p.r * 0.6, r: p.r * rr(0.3, 0.52), sy: 0.95, base });
+          }
+          // … and a couple of frontal bulges break up the creases between neighbouring puffs
+          for (let j = 0; j < 2; j++) {
+            const d = V3(rr(-0.7, 0.7), rr(-0.15, 0.45), 1).normalize();
+            inst.push({ ci, dx: p.dx + d.x * p.r * 0.55, dy: p.dy + d.y * p.r * 0.55, dz: dz + d.z * p.r * 0.5, r: p.r * rr(0.42, 0.6), sy: 0.92, base });
           }
         }
       });
@@ -323,7 +329,7 @@ vec3 blFog(vec3 col){
     const puffs = []; for (let i = 0; i < 112; i++) puffs.push(new THREE.Vector4(0, -1000, 0, 0.001));
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uPuffs: { value: puffs }, uSun: { value: V3(...S.sun.dir) },
+        uPuffs: { value: puffs }, uSun: { value: V3(-0.62, 0.74, 0.18).normalize() },
         uLit: { value: C(P.cloud) }, uShade: { value: C(P.cloudShade) }, uDeep: { value: C(P.cloudDeep) }, uWarm: { value: C(P.sunGlow) }, uHaze: { value: C(P.skyHorizon) },
       },
       vertexShader: `attribute vec2 aRange; attribute float aBase;
@@ -354,7 +360,7 @@ vec3 blFog(vec3 col){
           vec3 c = mix(uDeep, uShade, smoothstep(0.02, 0.5, wrap));
           c = mix(c, uLit, smoothstep(0.42, 0.92, wrap));
           c += uWarm * pow(max(ndl, 0.0), 2.0) * 0.1;
-          c *= mix(0.68, 1.0, ao);
+          c *= mix(0.74, 1.0, ao);
           float hb = clamp((vW.y - vBase) / 7.0, 0.0, 1.0);
           c = mix(c * vec3(0.8, 0.85, 0.96), c, smoothstep(0.0, 0.75, hb));
           float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
@@ -580,7 +586,7 @@ vec3 blFog(vec3 col){
       fNormal: `{
         vec2 p = vWP.xz; float e = 0.05;
         float dist = length(vWP - cameraPosition);
-        float amp = 0.075 * smoothstep(150.0, 12.0, dist);
+        float amp = mix(0.06, 0.1, smoothstep(40.0, 22.0, dist)) * smoothstep(150.0, 12.0, dist);
         vec2 g = vec2(blWh(p + vec2(e, 0.0)) - blWh(p - vec2(e, 0.0)), blWh(p + vec2(0.0, e)) - blWh(p - vec2(0.0, e))) / (2.0 * e) * amp;
         blFoam = 0.0;
         for (int i = 0; i < 3; i++) {
@@ -930,6 +936,12 @@ vec3 blFog(vec3 col){
       const x = rr(-16, 16), z = rr(26.3, 31.5);
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + rr(-0.3, 0.3), 0, R() * U.TAU, 'XYZ'));
       leaves.push({ p: V3(x, bankY(x, z) + 0.03, z), q, s: rr(0.1, 0.17), c: C(pick([P.mapleRed, P.mapleOrange, P.ginkgo, P.mapleCrimson, P.autumnBrown, P.mapleOrange])).multiplyScalar(rr(0.7, 1.05)), sw: 0 });
+    }
+    // a few leaves resting on the calm shallows by the right-hand shore
+    for (let i = 0; i < 16; i++) {
+      const x = rr(5, 15), z = rr(22.5, 25.6);
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + rr(-0.12, 0.12), 0, R() * U.TAU, 'XYZ'));
+      leaves.push({ p: V3(x, 0.025, z), q, s: rr(0.13, 0.2), c: C(pick([P.mapleRed, P.mapleOrange, P.mapleCrimson, P.ginkgo])).multiplyScalar(rr(0.85, 1.1)), sw: 0 });
     }
     const lg = mapleLeafGeo(120);
     const aSw = new Float32Array(leaves.length); leaves.forEach((o, i) => { aSw[i] = o.sw; });

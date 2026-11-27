@@ -16,7 +16,7 @@
   let W = 16, H = 9, PR = 1, lastKey = '';
   const uTime = { value: 0 };
   const D = {};
-  let _m, _q, _e, _v, _s, _c;
+  let _m, _q, _e, _v, _s, _q2, _e2, _t1, _t2;
 
   // ───────────────────────── small helpers ─────────────────────────
   const C = (h) => new THREE.Color(h);
@@ -338,8 +338,8 @@
     const far = S.ridges.find((r) => r.id === 'far'), ara = S.ridges.find((r) => r.id === 'arashiyama');
     const cF = C('#8399c4'), cFH = C('#bfcde3'), tmp = new THREE.Color();
     const matFar = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: C('#3b5a92'), emissiveIntensity: 0.26 });
-    buildRidge(far, { mat: matFar, x0: -215, x1: 215, dx: 3.2, rows: 8, yBase: 0, pow: 0.9, k: 0.9, bump: 5, bf: 0.05, jy: 0.7,
-      color: (a, b, c, t) => tmp.copy(cF).lerp(cFH, U.smoothstep(0.15, 1, t) * 0.75).multiplyScalar(0.94 + rnd() * 0.12).clone() });
+    buildRidge(far, { mat: matFar, x0: -215, x1: 215, dx: 3.2, rows: 8, yBase: 0, pow: 0.9, k: 0.9, bump: 7.5, bf: 0.05, jy: 0.8,
+      color: (a, b, c, t) => tmp.copy(cF).lerp(cFH, U.smoothstep(0.15, 1, t) * 0.75).multiplyScalar(0.9 + rnd() * 0.18).clone() });
     const sh = C(P.mapleCrimson);
     buildRidge(ara, { x0: -125, x1: 125, dx: 1.55, rows: 11, yBase: -0.4, pow: 0.95, k: 0.5, bump: 2.4, bf: 0.12, jy: 0.7,
       color: (a, b, c, t) => {
@@ -459,10 +459,9 @@
     items.push([cx, B.deckY - B.deckT / 2, 0, span, B.deckT, B.width, cDeck.clone().multiplyScalar(1.1)]);
     for (const s of [-1, 1]) items.push([cx, deckBot + 0.1, s * (B.width / 2 + 0.07), span, 0.36, 0.14, cDark.clone().multiplyScalar(1.15)]);
     for (const x of B.piers) {
-      const lean = 0;
       for (const z of B.pierPostZ) items.push([x, (deckBot - 0.25 - 0.9) / 2, z, 0.36, deckBot - 0.25 + 0.9, 0.36, vary(cDark, 0.15)]);
       items.push([x, deckBot - 0.14, 0, 0.42, 0.28, B.width + 0.5, cDark.clone().multiplyScalar(0.9)]);
-      items.push([x, 0.95 + lean, 0, 0.2, 0.18, 3.8, cDark.clone().multiplyScalar(0.85)]);
+      items.push([x, 0.95, 0, 0.2, 0.18, 3.8, cDark.clone().multiplyScalar(0.85)]);
     }
     for (const x of B.railPosts) for (const s of [-1, 1]) items.push([x, B.deckY + (B.railH + 0.1) / 2, s * B.width / 2, 0.15, B.railH + 0.1, 0.15, vary(cDeck, 0.12)]);
     for (const s of [-1, 1]) {
@@ -512,7 +511,7 @@
   }
 
   function buildNearBank() {
-    const b = new Builder(), nb = S.nearBank, xs = [], zs = [25.55, 26.0, 26.6, 27.3, 28.1, 29.0, 30.0, 31.2, 32.6, 34.2, 36.2, 38.6, 41.5];
+    const b = new Builder(), xs = [], zs = [25.55, 26.0, 26.6, 27.3, 28.1, 29.0, 30.0, 31.2, 32.6, 34.2, 36.2, 38.6, 41.5];
     for (let x = -34; x <= 34.01; x += 1.25) xs.push(x);
     const yAt = (x, z, j) => (j === 0 ? -0.3 : S.nearBankY(z) + (j === 1 ? -0.06 : U.fbm2(x * 0.35, z * 0.35) * 0.32 - 0.08));
     const g = xs.map((x, i) => zs.map((z, j) => { const xx = i === 0 || i === xs.length - 1 ? x : x + (rnd() - 0.5) * 0.9, zz = j < 2 ? z : z + (rnd() - 0.5) * 0.5; return [xx, yAt(xx, zz, j), zz]; }));
@@ -528,7 +527,6 @@
       b.tri(a, bb, d, f()); b.tri(a, d, c, f());
     }
     const m = new THREE.Mesh(b.build(), D.matVC2); scene.add(m);
-    void nb;
   }
 
   function buildRocks() {
@@ -842,7 +840,7 @@
     const B = D.birds, list = S.birds(t);
     B.m.visible = list.length > 0;
     if (!list.length) return;
-    const wh = C(P.heron), gr = C('#9aa3b3'), dk = C('#4a4f5c'), yl = C('#e8b730');
+    const [wh, gr, dk, yl] = D.birdCols;
     let o = 0, oc = 0;
     const put = (p, c) => { B.pos[o++] = p[0]; B.pos[o++] = p[1]; B.pos[o++] = p[2]; if (!B.colsDone) { B.col[oc++] = c.r; B.col[oc++] = c.g; B.col[oc++] = c.b; } };
     const tri = (a, b, c, cc) => { put(a, cc); put(b, cc); put(c, cc); };
@@ -958,8 +956,8 @@
     // leaf: tumbling in the air, eases flat onto the water as it lands
     const lay = h.phase === 'float' ? 1 : h.phase === 'fly' ? U.smoothstep(HE.fly - 0.025, HE.fly, p) : 0;
     _e.set(0.3, Math.acos(U.clamp(h.flip, -1, 1)), -h.rot, 'ZYX'); _q.setFromEuler(_e);
-    const qFlat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, -h.rot, 'XYZ'));
-    _q.slerp(qFlat, lay);
+    _e2.set(-Math.PI / 2, 0, -h.rot, 'XYZ'); _q2.setFromEuler(_e2);
+    _q.slerp(_q2, lay);
     const sz = h.size * 1.25;
     H_.mesh.position.set(h.x, h.y + lay * 0.03, h.z); H_.mesh.quaternion.copy(_q); H_.mesh.scale.set(sz, sz, sz);
     H_.mat.opacity = h.alpha; H_.mesh.visible = h.alpha > 0.01;
@@ -973,7 +971,7 @@
     if (H_.rib.visible) {
       const pts = H_.pts;
       for (let k = 0; k < TR_N; k++) { const tau = U.clamp(t - k * TR_DT, tHold, tFly); const q = S.heroLeaf(tau); pts[k].set(q.x, q.y, q.z); }
-      const rp = H_.rp, side = _v, tg = V3(0, 0, 0), toC = V3(0, 0, 0); let lx = 0, ly = 1, lz = 0;
+      const rp = H_.rp, side = _v, tg = _t1, toC = _t2; let lx = 0, ly = 1, lz = 0;
       for (let k = 0; k < TR_N; k++) {
         const a = pts[Math.max(k - 1, 0)], b = pts[Math.min(k + 1, TR_N - 1)];
         tg.subVectors(a, b); toC.set(cam.pos[0] - pts[k].x, cam.pos[1] - pts[k].y, cam.pos[2] - pts[k].z);
@@ -1029,7 +1027,8 @@
   function init(api) {
     THREE = api.THREE; S = api.S; U = api.U; P = api.P;
     rnd = U.mulberry32(0x7448ee);
-    _m = new THREE.Matrix4(); _q = new THREE.Quaternion(); _e = new THREE.Euler(); _v = new THREE.Vector3(); _s = new THREE.Vector3(); _c = new THREE.Color();
+    _m = new THREE.Matrix4(); _q = new THREE.Quaternion(); _e = new THREE.Euler(); _v = new THREE.Vector3(); _s = new THREE.Vector3(); _q2 = new THREE.Quaternion(); _e2 = new THREE.Euler(); _t1 = new THREE.Vector3(); _t2 = new THREE.Vector3();
+    D.birdCols = [C(P.heron), C('#9aa3b3'), C('#4a4f5c'), C('#e8b730')];
     renderer = new THREE.WebGLRenderer({ canvas: api.canvas, antialias: true, powerPreference: 'high-performance', stencil: false });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     D.clear = C(P.skyHorizon); renderer.setClearColor(D.clear, 1);
