@@ -136,7 +136,7 @@
       vec3 R = reflect(-V, n);
       float g = pow(max(dot(R, uSunSky), 0.0), 900.0);
       float tw = 0.5 + 0.5 * sin(uT * 4.0 + h21(floor(n.xz * 90.0)) * 40.0);
-      c += cGlint * g * tw * 2.2;
+      c += cGlint * g * tw * 2.0 * smoothstep(24.0, 42.0, dist);
       // foam: hero-leaf ripples, boat hull + kelvin wake
       float foam = 0.0;
       for (int i = 0; i < 3; i++) { vec4 r = uRip[i]; if (r.w > 0.0) { float d = length(vW.xz - r.xy) - r.z; foam += (exp(-d * d * 260.0) + exp(-d * d * 30.0) * 0.22) * r.w; } }
@@ -342,7 +342,7 @@
     D.mist = [];
     S.mist.forEach((ms, i) => {
       const mat = new THREE.ShaderMaterial({
-        uniforms: { cMist: { value: C(P.mist) }, uY: { value: ms.y }, uTh: { value: ms.thickness }, uT: uTime, uA: { value: i === 0 ? 0.62 : 0.72 } },
+        uniforms: { cMist: { value: C(P.mist) }, uY: { value: ms.y }, uTh: { value: ms.thickness }, uT: uTime, uA: { value: i === 0 ? 0.85 : 0.75 } },
         vertexShader: VS_WORLD, fragmentShader: FS_MIST, transparent: true, depthWrite: false, fog: false,
       });
       const w = Math.abs(ms.z) * 4.2 + 60;
@@ -821,7 +821,7 @@
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide, emissive: C('#7d8698') }));
     m.frustumCulled = false; reflect(m); scene.add(m);
     D.birds = { m, pos, col, n, triPer, colsDone: false };
   }
@@ -894,7 +894,7 @@
     const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; return tx;
   }
 
-  const TR_N = 120, TR_DT = 0.02, SP_DT = 0.025, SP_LIFE = 1.7, SP_SLOTS = 68, SP_PER = 3, MOTES = 230;
+  const TR_N = 150, TR_DT = 0.02, SP_DT = 0.025, SP_LIFE = 1.7, SP_SLOTS = 68, SP_PER = 3, MOTES = 230;
   function buildHero() {
     const H_ = (D.hero = {});
     H_.mat = new THREE.MeshLambertMaterial({ color: C('#e0412c'), emissive: C('#6e1206'), side: THREE.DoubleSide, flatShading: true, transparent: true });

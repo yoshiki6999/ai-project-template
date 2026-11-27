@@ -214,7 +214,7 @@
   };
   // Bamboo grove (竹林) rising out of frame along the right edge of the foreground.
   S.bamboo = [];
-  for (let i = 0; i < 22; i++) { const x = 4.6 + 4.2 * rnd() + i * 0.05, z = 31 + 7 * rnd(); S.bamboo.push({ x, z, r: 0.09 + 0.06 * rnd(), lean: (rnd() - 0.35) * 0.06, nodeGap: 1.1 + 0.4 * rnd(), seed: rnd(), top: 22 }); }
+  for (let i = 0; i < 15; i++) { const x = 5.9 + 4.2 * rnd() + i * 0.04, z = 31.5 + 6 * rnd(); S.bamboo.push({ x, z, r: 0.09 + 0.06 * rnd(), lean: (rnd() - 0.35) * 0.06, nodeGap: 1.1 + 0.4 * rnd(), seed: rnd(), top: 22 }); }
   S.bamboo.sort((a, b) => a.z - b.z);
 
   // ───────────── moving actors (all functions of time t in seconds) ─────────────
