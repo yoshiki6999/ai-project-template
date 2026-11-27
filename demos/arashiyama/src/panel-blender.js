@@ -1165,7 +1165,8 @@ vec3 blFog(vec3 col){
     const mat = stdMat('heron', { roughness: 0.55, side: THREE.DoubleSide });
     const bm = new THREE.InstancedMesh(body, mat, 5), wl = new THREE.InstancedMesh(wingShape(1), mat, 5), wr = new THREE.InstancedMesh(wingShape(-1), mat, 5);
     for (const m of [bm, wl, wr]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = false; scene.add(refl(m)); }
-    D.herons = { bm, wl, wr, m: new THREE.Matrix4(), m2: new THREE.Matrix4(), q: new THREE.Quaternion(), e: new THREE.Euler() };
+    D.herons = { bm, wl, wr, m: new THREE.Matrix4(), m2: new THREE.Matrix4(), q: new THREE.Quaternion(), e: new THREE.Euler(), p: V3(0, 0, 0), s: V3(1, 1, 1),
+      hl: new THREE.Matrix4().makeTranslation(0, 0.02, 0.06), hr: new THREE.Matrix4().makeTranslation(0, 0.02, -0.06) };
   }
   function updateHerons(t) {
     const o = D.herons, birds = S.birds(t);
@@ -1174,11 +1175,11 @@ vec3 blFog(vec3 col){
       const s = b.span / 1.84, f = Math.sin(b.flap * U.TAU);
       o.e.set(0.06 * Math.sin(t * 0.7 + i), 0, 0.05 * f);
       o.q.setFromEuler(o.e);
-      o.m.compose(V3(b.x, b.y + 0.06 * f, b.z), o.q, V3(s, s, s));
+      o.m.compose(o.p.set(b.x, b.y + 0.06 * f, b.z), o.q, o.s.set(s, s, s));
       o.bm.setMatrixAt(i, o.m);
       const a = 0.85 * f + 0.1;
-      o.m2.makeRotationX(-a); o.m2.premultiply(o.m); o.m2.multiply(new THREE.Matrix4().makeTranslation(0, 0.02, 0.06)); o.wl.setMatrixAt(i, o.m2);
-      o.m2.makeRotationX(a); o.m2.premultiply(o.m); o.m2.multiply(new THREE.Matrix4().makeTranslation(0, 0.02, -0.06)); o.wr.setMatrixAt(i, o.m2);
+      o.m2.makeRotationX(-a); o.m2.premultiply(o.m); o.m2.multiply(o.hl); o.wl.setMatrixAt(i, o.m2);
+      o.m2.makeRotationX(a); o.m2.premultiply(o.m); o.m2.multiply(o.hr); o.wr.setMatrixAt(i, o.m2);
     });
     o.bm.instanceMatrix.needsUpdate = o.wl.instanceMatrix.needsUpdate = o.wr.instanceMatrix.needsUpdate = true;
   }
@@ -1193,13 +1194,13 @@ vec3 blFog(vec3 col){
     am.instanceMatrix.setUsage(THREE.DynamicDrawUsage); am.frustumCulled = false; am.castShadow = true;
     S.ambientLeafSeeds.forEach((s, i) => am.setColorAt(i, C(P[s.color])));
     scene.add(am);
-    D.leaves = { hero, am, m: new THREE.Matrix4(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler() };
+    D.leaves = { hero, am, m: new THREE.Matrix4(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler(), e2: new THREE.Euler(), p: V3(0, 0, 0), s: V3(1, 1, 1) };
   }
   function updateLeaves(t) {
     const o = D.leaves, h = S.heroLeaf(t);
     o.e.set(0.35 * Math.sin(t * 1.3), Math.acos(U.clamp(h.flip, -1, 1)), h.rot, 'ZYX');
     o.q.setFromEuler(o.e);
-    const flat = o.q2.setFromEuler(new THREE.Euler(-Math.PI / 2 + 0.62, 0, h.rot, 'XYZ'));
+    const flat = o.q2.setFromEuler(o.e2.set(-Math.PI / 2 + 0.62, 0, h.rot, 'XYZ'));
     let k = 0;
     if (h.phase === 'float') k = 1; else if (h.phase === 'fly') k = U.smoothstep(1.4, 0.05, h.y) * U.smoothstep(0.85, 0.97, h.u);
     if (k > 0) o.q.slerp(flat, k);
@@ -1213,7 +1214,7 @@ vec3 blFog(vec3 col){
     leaves.forEach((l, i) => {
       o.e.set(0.5 + 0.3 * Math.sin(t + i), Math.acos(U.clamp(l.flip, -1, 1)), l.rot, 'ZYX'); o.q.setFromEuler(o.e);
       const s = l.size * U.clamp(l.alpha, 0, 1);
-      o.m.compose(V3(l.x, l.y + 0.04, l.z), o.q, V3(s, s, s)); o.am.setMatrixAt(i, o.m);
+      o.m.compose(o.p.set(l.x, l.y + 0.04, l.z), o.q, o.s.set(s, s, s)); o.am.setMatrixAt(i, o.m);
     });
     o.am.instanceMatrix.needsUpdate = true;
     const rip = D.water.rip, rs = S.ripples(t);
@@ -1261,7 +1262,7 @@ vec3 blFog(vec3 col){
 
   const _plane = { n: null }, _q = { v: null }, _clip = { v: null }, _up = { v: null }, _tv = { v: null };
   function updateMirror(st) {
-    if (!_plane.n) { _plane.n = new THREE.Plane(); _q.v = new THREE.Vector4(); _clip.v = new THREE.Vector4(); _up.v = new THREE.Vector3(); _tv.v = new THREE.Vector4(); }
+    if (!_plane.n) { _plane.n = new THREE.Plane(); _q.v = new THREE.Vector4(); _clip.v = new THREE.Vector4(); _up.v = new THREE.Vector3(); _tv.v = new THREE.Vector4(); _plane.up = V3(0, 1, 0); _plane.pt = V3(0, 0, 0); }
     const cp = camera.position, tg = st.cam.target, eps = 0.03;
     _up.v.set(0, 1, 0).applyQuaternion(camera.quaternion);
     mirrorCam.position.set(cp.x, 2 * eps - cp.y, cp.z);
@@ -1272,7 +1273,7 @@ vec3 blFog(vec3 col){
     mirrorCam.projectionMatrix.copy(camera.projectionMatrix);
     D.texMat.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(mirrorCam.projectionMatrix).multiply(mirrorCam.matrixWorldInverse);
     // oblique near plane = water surface (clips anything below it out of the reflection)
-    _plane.n.setFromNormalAndCoplanarPoint(V3(0, 1, 0), V3(0, eps, 0)).applyMatrix4(mirrorCam.matrixWorldInverse);
+    _plane.n.setFromNormalAndCoplanarPoint(_plane.up, _plane.pt.set(0, eps, 0)).applyMatrix4(mirrorCam.matrixWorldInverse);
     const c = _clip.v.set(_plane.n.normal.x, _plane.n.normal.y, _plane.n.normal.z, _plane.n.constant), pm = mirrorCam.projectionMatrix.elements, q = _q.v;
     q.x = (Math.sign(c.x) + pm[8]) / pm[0]; q.y = (Math.sign(c.y) + pm[9]) / pm[5]; q.z = -1; q.w = (1 + pm[10]) / pm[14];
     c.multiplyScalar(2 / c.dot(q));
