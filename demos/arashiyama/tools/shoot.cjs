@@ -3,6 +3,7 @@
 //
 //   node tools/shoot.cjs [--page=dev|dist] [--times=3,10,17] [--solo=python|motion|three|blender]
 //                        [--split=0.25,0.5,0.75] [--w=1600] [--h=900] [--out=/abs/path/shot.png] [--live=ms]
+//                        [--mobile] (touch phone, viewport w×h)  [--full] (whole page instead of the stage)
 //
 // --times   one screenshot per time (seconds into the 24 s loop), clock paused, intro skipped
 // --live=ms instead of paused frames: let the animation play for ms and shoot at the end
@@ -30,7 +31,8 @@ const server = http.createServer((req, res) => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
-  const ctx = await browser.newContext({ viewport: { width: W, height: Math.round(H + 400) }, deviceScaleFactor: 1 });
+  const mobile = process.argv.includes('--mobile'), full = process.argv.includes('--full');
+  const ctx = await browser.newContext(mobile ? { viewport: { width: W, height: H }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: W, height: Math.round(H + 400) }, deviceScaleFactor: 1 });
   await ctx.route('https://cdn.jsdelivr.net/npm/three@0.160.0/**', (route) => {
     const rel = new URL(route.request().url()).pathname.replace('/npm/three@0.160.0/', '');
     const f = path.join(threeDir, rel);
@@ -54,7 +56,7 @@ const server = http.createServer((req, res) => {
     if (live) await page.waitForTimeout(+live); else await page.waitForTimeout(400);
     const stats = await page.evaluate(() => (window.ARASHI && window.ARASHI.stats ? window.ARASHI.stats() : null));
     const file = live ? out : out.replace(/\.png$/, `-t${t}.png`);
-    await page.locator('#stage').screenshot({ path: file });
+    if (full) await page.screenshot({ path: file, fullPage: true }); else await page.locator('#stage').screenshot({ path: file });
     console.log(`[shot] ${file}${stats ? '  frame ms (software GL, relative only): ' + JSON.stringify(stats) : ''}`);
     await page.close();
   }

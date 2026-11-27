@@ -383,7 +383,7 @@
     if (splitTween) splitTween(now);
     const cam = A.cameraAt(clock.t), pj = A.makeProjector(cam, W, H);
     const st = { t: clock.t, dt: clock.paused ? 0 : dt, p: U.fract(clock.t / A.LOOP), W, H, dpr, cam, project: pj.project, groundAt: pj.groundAt, atDepthZ: pj.atDepthZ, horizonY: pj.project(cam.pos[0], cam.pos[1], cam.pos[2] - 1e6).y, paused: clock.paused, frame: frameNo };
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 4 && (onScreen || !A.readyAt); i++) {
       const id = A.PANEL_ORDER[i], pn = panels[id]; if (!pn || !pn.ready) continue;
       const [b0, b1] = bounds(i); if ((b1 - b0) * W < 0.5) continue;
       st.view = { x0: b0 * W, x1: b1 * W };
@@ -399,7 +399,7 @@
   }
 
   A.stats = () => { const o = {}; for (const id of A.PANEL_ORDER) { const pn = panels[id]; o[id] = !pn ? 'missing' : pn.failed ? 'FAILED' : pn.ms === undefined ? 'n/a' : +pn.ms.toFixed(1); } return o; };
-  let timeEl = null;
+  let timeEl = null, onScreen = true;
   function syncButtons() {
     const pb = document.getElementById('btn-play');
     if (pb) { pb.textContent = clock.paused ? '播放' : '暂停'; pb.setAttribute('aria-pressed', String(!clock.paused)); }
@@ -418,11 +418,23 @@
       d.addEventListener('pointerup', up); d.addEventListener('pointercancel', up);
       d.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const r = stage.getBoundingClientRect(); move(r.left + (split[i] + (e.key === 'ArrowLeft' ? -0.02 : 0.02)) * r.width); e.preventDefault(); } });
     });
-    stage.querySelectorAll('.plabel').forEach((l) => l.addEventListener('click', () => A.solo(l.dataset.id)));
+    stage.querySelectorAll('.plabel').forEach((l) => l.addEventListener('click', (e) => { e.stopPropagation(); A.solo(l.dataset.id); }));
+    let tap = null;
+    stage.addEventListener('pointerdown', (e) => { if (e.target.closest('.divider, .plabel')) return; tap = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+    stage.addEventListener('pointerup', (e) => {
+      if (!tap || e.target.closest('.divider, .plabel')) { tap = null; return; }
+      const moved = Math.hypot(e.clientX - tap.x, e.clientY - tap.y), long = performance.now() - tap.t; tap = null;
+      if (moved > 10 || long > 600) return;
+      if (solo) { A.solo(solo); return; } // tap anywhere while one strip is enlarged → back to four
+      const r = stage.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
+      for (let i = 0; i < 4; i++) { const [b0, b1] = bounds(i); if (fx >= b0 && fx <= b1) { A.solo(A.PANEL_ORDER[i]); break; } }
+    });
+    stage.addEventListener('pointercancel', () => { tap = null; });
     document.querySelectorAll('[data-solo]').forEach((b) => b.addEventListener('click', () => A.solo(b.dataset.solo)));
     const pb = document.getElementById('btn-play'); if (pb) pb.addEventListener('click', () => A.setPaused(!clock.paused));
     const rb = document.getElementById('btn-reset'); if (rb) rb.addEventListener('click', () => A.reset());
     const fb = document.getElementById('btn-full');
+    if (fb && !(document.fullscreenEnabled && document.documentElement.requestFullscreen)) fb.hidden = true;
     if (fb) fb.addEventListener('click', () => { const el = document.getElementById('stage-wrap'); const p = document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen && el.requestFullscreen(); if (p && p.catch) p.catch(() => {}); });
     window.addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA|BUTTON/.test(e.target.tagName) && e.key === ' ') return;
@@ -431,6 +443,7 @@
       else if (e.key === '0' || e.key === 'Escape') A.reset();
     });
     new ResizeObserver(resize).observe(stage);
+    if ('IntersectionObserver' in window) new IntersectionObserver((en) => { onScreen = en[en.length - 1].isIntersecting; }).observe(stage);
     resize();
     // initial split: URL ?solo=id, ?split=a,b,c, otherwise the reveal cascade
     if (qs.get('solo') && A.PANEL_ORDER.indexOf(qs.get('solo')) >= 0) { const k = A.PANEL_ORDER.indexOf(qs.get('solo')); solo = qs.get('solo'); setSplit([0, 1, 2].map((i) => (i < k ? 0 : 1))); }
